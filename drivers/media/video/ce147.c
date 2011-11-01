@@ -4287,9 +4287,8 @@ static int ioctl_s_parm(struct v4l2_int_device *s, struct v4l2_streamparm *a)
 
 	dprintk(CAM_INF, CE147_MOD_NAME "ioctl_s_parm is called...\n");
 
-	/* Set mode (camera/camcorder/vt) & state (preview/capture) */
+	/* Set mode (camera/camcorder/vt) */
 	sensor->mode = a->parm.capture.capturemode;
-	sensor->state = a->parm.capture.currentstate;
 
 	if(sensor->mode < 1 || sensor->mode > 3) sensor->mode = CE147_MODE_CAMERA;
 	dprintk(CAM_DBG, CE147_MOD_NAME "mode = %d, state = %d\n", sensor->mode, sensor->state);   
