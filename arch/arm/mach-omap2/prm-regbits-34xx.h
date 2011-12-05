@@ -578,14 +578,6 @@
 #define OMAP3430_OFFMODESETUPTIME_SHIFT			0
 #define OMAP3430_OFFMODESETUPTIME_MASK			(0xffff << 0)
 
-
-/* PRM_VOLTCTRL */ //TEST
-#define OMAP3430_SEL_VMODE				(1 << 4)
-#define OMAP3430_SEL_OFF				(1 << 3)
-#define OMAP3430_AUTO_OFF				(1 << 2)
-#define OMAP3430_AUTO_RET				(1 << 1)
-#define OMAP3430_AUTO_SLEEP				(1 << 0)
-
 /* PRM_VP1_CONFIG specific bits */
 
 /* PRM_VP1_VSTEPMIN specific bits */

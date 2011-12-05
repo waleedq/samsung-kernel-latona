@@ -27,6 +27,7 @@
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
+#include <linux/irq.h>
 #include <linux/platform_device.h>
 #include <linux/spinlock.h>
 #include <linux/workqueue.h>
@@ -46,6 +47,7 @@
 #include "fsa9480_i2c.h"
 #endif
 
+#include <linux/usb/composite.h>
 
 #ifdef  CONFIG_MICROUSBIC_INTR
 #define USB_DETECT_GPIO           
@@ -656,9 +658,40 @@ static ssize_t twl4030_usb_vbus_show(struct device *dev,
 
 	return ret;
 }
-static DEVICE_ATTR(vbus, 0444, twl4030_usb_vbus_show, NULL);
+
+static ssize_t twl4030_usb_vbus_store(struct device *dev,
+                                   struct device_attribute *attr,
+                                   const char *buf, size_t count)
+{
+
+	int status  = USB_EVENT_NONE;
+	struct twl4030_usb *twl = dev_get_drvdata(dev);
+	
+   	if (strstr(buf, "ON") || strstr(buf, "on"))
+   		{
+   		   twl4030_phy_resume(twl);
+   		   printk("[twl4030] mtp On --------------------------------------------------------\n");
+   		   status = USB_EVENT_VBUS;
+   		}
+	else if (strstr(buf, "OFF") || strstr(buf, "off"))
+		{
+		    twl4030_phy_suspend(twl, 0);
+   		   printk("[twl4030] mtp Off --------------------------------------------------------\n");
+		   status = USB_EVENT_NONE;
+		}
+	else
+		return -EINVAL;
+
+	//twl->linkstat = status;
+	blocking_notifier_call_chain(&twl->otg.notifier,status, twl->otg.gadget);
+    	//sysfs_notify(&twl->dev->kobj, NULL, "vbus");
+	
+    return count;
+}
+static DEVICE_ATTR(vbus, 0660, twl4030_usb_vbus_show, twl4030_usb_vbus_store);
 
 #ifndef USB_DETECT_GPIO
+static int skip_init = 0;
 static irqreturn_t twl4030_usb_irq(int irq, void *_twl)
 {
 	struct twl4030_usb *twl = _twl;
@@ -687,18 +720,34 @@ static irqreturn_t twl4030_usb_irq(int irq, void *_twl)
 		 * starts to handle softconnect right.
 		 */
 		if (status == USB_EVENT_NONE)
+		{
 			twl4030_phy_suspend(twl, 0);
+			if(skip_init)
+			{ 
+				usb_gadget_disconnect(twl->otg.gadget);
+				usb_gadget_vbus_disconnect(twl->otg.gadget);
+				//printk("[twl4030] usb_gadget_disconnect ---------\n");
+			}
+			blocking_notifier_call_chain(&twl->otg.notifier, status,
+				twl->otg.gadget);
+		}
 		else   {
 #if defined(CONFIG_HAS_WAKELOCK) && defined(CONFIG_FSA9480_MICROUSB)
 			wake_lock(&twl->wake_lock);
 #endif
 			twl4030_phy_resume(twl);
+			if(skip_init)
+			{
+				usb_gadget_connect(twl->otg.gadget);
+				//printk("[twl4030] usb_gadget_connect +++++++++\n");
+			}
 		}
 
 		blocking_notifier_call_chain(&twl->otg.notifier, status,
 				twl->otg.gadget);
 	}
 	sysfs_notify(&twl->dev->kobj, NULL, "vbus");
+	skip_init = 1;
 
 	return IRQ_HANDLED;
 }
@@ -889,9 +938,11 @@ static int __devinit twl4030_usb_probe(struct platform_device *pdev)
 	microusb_enable();
 #else
 	twl->irq_enabled = true;
-	status = request_threaded_irq(twl->irq, NULL, twl4030_usb_irq,
-			IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING,
+	status = request_threaded_irq(twl->irq, NULL, twl4030_usb_irq, IRQF_SHARED,
 			"twl4030_usb", twl);
+	
+	set_irq_type( twl->irq, IRQ_TYPE_EDGE_BOTH );
+	
 	if (status < 0) {
 		dev_dbg(&pdev->dev, "can't get IRQ %d, err %d\n",
 			twl->irq, status);

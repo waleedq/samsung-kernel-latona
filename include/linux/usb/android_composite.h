@@ -27,7 +27,12 @@ struct android_usb_function {
 };
 
 struct android_usb_product {
-	/* Default product ID. */
+	/* Vendor ID for this set of functions.
+	 * Default vendor_id in platform data will be used if this is zero.
+	 */
+	__u16 vendor_id;
+
+	/* Product ID for this set of functions. */
 	__u16 product_id;
 
 	/* List of function names associated with this product.
@@ -141,6 +146,9 @@ extern void android_enable_function(struct usb_function *f, int enable);
 #  endif
 #  define       ANDROID_UMS_CONFIG_STRING	 "UMS Only (Not debugging mode)"
 #  define       ANDROID_MTP_CONFIG_STRING	 "MTP Only (Not debugging mode)"
+#  define       ANDROID_ACC_CONFIG_STRING	 "ACCESSORY Only (ADK mode)"
+#  define       ANDROID_ACC_ADB_CONFIG_STRING	 "ACCESSORY _ADB (ADK + ADB mode)"
+
 #  ifdef CONFIG_USB_ANDROID_SAMSUNG_RNDIS_WITH_MS_COMPOSITE
 #    define       ANDROID_RNDIS_CONFIG_STRING	 "RNDIS + UMS (Not debugging mode)"
 #  else
@@ -153,7 +161,7 @@ extern void android_enable_function(struct usb_function *f, int enable);
 #  define USBSTATUS_ASKON			0x4
 #  define USBSTATUS_VTP				0x8
 #  define USBSTATUS_ADB				0x10
-#  define USBSTATUS_DM				0x20
+#  define USBSTATUS_ACCESSORY				0x20
 #  define USBSTATUS_ACM				0x40
 #  define USBSTATUS_SAMSUNG_KIES_REAL		0x80
 

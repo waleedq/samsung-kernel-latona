@@ -286,14 +286,9 @@ void pm_qos_remove_request(struct pm_qos_request_list *pm_qos_req)
 	if (pm_qos_req == NULL)
 		return;
 		/* silent return to keep pcm code cleaner */
-	
+
 	qos_class = pm_qos_req->pm_qos_class;
 	spin_lock_irqsave(&pm_qos_lock, flags);
-
-//	if (&pm_qos_req->list != NULL)
-	if ((pm_qos_req->list.next == NULL) || (pm_qos_req->list.prev == NULL))
-		printk("pm_qos_remove_request pm_qos_req->list is null\n");
-
 	list_del(&pm_qos_req->list);
 	kfree(pm_qos_req);
 	spin_unlock_irqrestore(&pm_qos_lock, flags);

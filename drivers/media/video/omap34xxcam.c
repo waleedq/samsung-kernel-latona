@@ -39,6 +39,10 @@
 
 #include <media/v4l2-common.h>
 #include <media/v4l2-ioctl.h>
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+#include <mach/gpio.h>
+#include <linux/delay.h>
+#endif
 #include <media/v4l2-event.h>
 
 #include "omap34xxcam.h"
@@ -53,6 +57,11 @@ extern unsigned short int refresh_rate;
 
 #define to_omap34xxcam_fh(vfh)				\
 	container_of(vfh, struct omap34xxcam_fh, vfh)
+
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+#define GPIO_FLASH_EN1           156
+#define GPIO_FLASH_EN2           158
+#endif
 
 /* global variables */
 static struct omap34xxcam_device *omap34xxcam;
@@ -448,6 +457,7 @@ static int try_pix_parm(struct omap34xxcam_videodev *vdev,
   struct device *isp = vdev->cam->isp;
   struct v4l2_frmsizeenum frms;
 
+  //printk("[%s:%d] Start\n",__func__,__LINE__);
   if (vidioc_int_enum_framesizes(vdev->vdev_sensor, &frms) < 0)
   {
     printk("vidioc_int_enum_framesizes failed return\n");
@@ -463,7 +473,7 @@ static int try_pix_parm(struct omap34xxcam_videodev *vdev,
     printk("isp_try_fmt_cap failed\n");
     return -EINVAL;
   }
-
+  //printk("[%s:%d] End\n",__func__,__LINE__);
   return 0;
 }
 #else
@@ -696,6 +706,8 @@ static int s_pix_parm(struct omap34xxcam_videodev *vdev,
 	struct v4l2_format old_fmt;
 	u32 pixclk = 0;
 	int rval = 0;
+
+	//printk("[%s:%d] Start\n",__func__,__LINE__);
   /* modified for image capture, first enumerate sensor and then isp */
 #ifdef ZEUS_CAM
 	fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -754,6 +766,7 @@ static int s_pix_parm(struct omap34xxcam_videodev *vdev,
 	vidioc_int_priv_g_pixclk_active(vdev->vdev_sensor, &pixclk);
 	isp_set_ccdc_vp_clock(isp, pixclk);
 
+	//printk("[%s:%d] End\n",__func__,__LINE__);
 	return rval;
 }
 
@@ -776,6 +789,7 @@ static int vidioc_s_fmt_vid_cap(struct file *file, void *_fh,
 	struct v4l2_fract timeperframe;
 	int rval;
 
+	//printk("[%s:%d] Start",__func__,__LINE__);
 	if (vdev->vdev_sensor == v4l2_int_device_dummy())
 		return -EINVAL;
 
@@ -796,6 +810,7 @@ static int vidioc_s_fmt_vid_cap(struct file *file, void *_fh,
 out:
 	mutex_unlock(&vdev->mutex);
 
+	//printk("[%s:%d] End",__func__,__LINE__);
 	return rval;
 }
 
@@ -1438,6 +1453,7 @@ static int vidioc_s_parm(struct file *file, void *_fh,
 	if (vdev->vdev_sensor == v4l2_int_device_dummy())
 		return -EINVAL;
 
+	//printk("[%s:%d] Start\n",__func__,__LINE__);
 	mutex_lock(&vdev->mutex);
 
 	vdev->want_timeperframe = a->parm.capture.timeperframe;
@@ -1453,6 +1469,7 @@ static int vidioc_s_parm(struct file *file, void *_fh,
 
 	mutex_unlock(&vdev->mutex);
 
+	//printk("[%s:%d] End\n",__func__,__LINE__);
 	return rval;
 }
 
@@ -1602,6 +1619,7 @@ static int vidioc_enum_framesizes(struct file *file, void *_fh,
 	if (vdev->vdev_sensor == v4l2_int_device_dummy())
 		return -EINVAL;
 
+	//printk("[%s:%d] Start",__func__,__LINE__);
 	mutex_lock(&vdev->mutex);
 
 	if (vdev->vdev_sensor_config.sensor_isp) {
@@ -1633,6 +1651,7 @@ static int vidioc_enum_framesizes(struct file *file, void *_fh,
 
 done:
 	mutex_unlock(&vdev->mutex);
+	//printk("[%s:%d] End",__func__,__LINE__);
 	return rval;
 }
 
@@ -2158,6 +2177,62 @@ static int omap34xxcam_release(struct file *file)
 
 	return 0;
 }
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+	static
+ssize_t flash_read(struct file *filp, const char *b, size_t c, loff_t *offset)
+{
+	int i = 0;
+	int err = 0;
+
+	printk("Enter flash_read for factory test\n");
+
+	gpio_direction_output(GPIO_FLASH_EN1, 0); 
+	gpio_direction_output(GPIO_FLASH_EN2, 0); 	
+	mdelay(2);
+
+	gpio_free(GPIO_FLASH_EN1);  
+	gpio_free(GPIO_FLASH_EN2);  
+
+	return 0;
+}
+
+	static
+ssize_t flash_write(struct file *filp, const char *b, size_t c, loff_t *offset)
+{
+	int i = 0;
+	int err = 0;
+
+	printk("Enter flash_write for factory test\n");
+	if (gpio_request(GPIO_FLASH_EN1,"FLASH EN1") != 0)
+	{
+		printk("OMAP34xxcam::Could not request GPIO %d\n", GPIO_FLASH_EN1);
+		return -EIO;
+	}
+
+	if (gpio_request(GPIO_FLASH_EN2,"FLASH EN2") != 0) 
+	{
+		printk( "OMAP34xxcam::Could not request GPIO %d", GPIO_FLASH_EN2);
+		return -EIO;
+	}
+
+	//movie mode
+	gpio_direction_output(GPIO_FLASH_EN2, 0); 
+	for (i = 8; i > 1; i--)
+	{
+		//gpio on
+		gpio_direction_output(GPIO_FLASH_EN1, 1); 
+		udelay(1);
+		//gpio off
+		gpio_direction_output(GPIO_FLASH_EN1, 0); 
+		udelay(1);
+	}
+	gpio_direction_output(GPIO_FLASH_EN1, 1); 
+	mdelay(10);
+
+	return 0;
+}
+#endif
+
 
 static struct v4l2_file_operations omap34xxcam_fops = {
 	.owner = THIS_MODULE,
@@ -2166,6 +2241,10 @@ static struct v4l2_file_operations omap34xxcam_fops = {
 	.mmap = omap34xxcam_mmap,
 	.open = omap34xxcam_open,
 	.release = omap34xxcam_release,
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+	.read = flash_read,	
+	.write = flash_write,	
+#endif
 };
 
 static void omap34xxcam_vfd_name_update(struct omap34xxcam_videodev *vdev)

@@ -547,7 +547,7 @@ void j4fs_read_inode (struct inode * inode)
 	if(ino==J4FS_ROOT_INO)
 	{
 		inode->i_size = 0;
-		inode->i_mode=S_IFDIR|S_IWUGO|S_IRUGO|S_IXUGO;
+		inode->i_mode=S_IFDIR|S_IWUSR|S_IRUGO|S_IXUGO;
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 29))
 	inode->i_uid=current->fsuid;
@@ -1207,6 +1207,7 @@ int j4fs_hold_space(int size)
 		new_object_offset=(new_object_offset+J4FS_BASIC_UNIT_SIZE-1)/J4FS_BASIC_UNIT_SIZE*J4FS_BASIC_UNIT_SIZE;	// 4096 align
 	}
 
+	kfree(buf);
 	if((new_object_offset+size-1)>device_info.j4fs_end) return 0;
 	else return 1;
 
@@ -1225,10 +1226,15 @@ int j4fs_fill_super(struct super_block *sb, void *data, int silent)
 	T(J4FS_TRACE_FS,("%s %d\n",__FUNCTION__,__LINE__));
 
 	sbi = kzalloc(sizeof(*sbi), GFP_NOFS);
-	es=kzalloc(sizeof(*es), GFP_NOFS);
-
-	if (!sbi ||!es)
+	if (!sbi)
 		return -ENOMEM;
+
+	es=kzalloc(sizeof(*es), GFP_NOFS);
+	if (!es)
+	{
+		kfree(sbi);	
+		return -ENOMEM;
+	}
 
 	sb->s_fs_info = sbi;
 	sbi->s_es = es;
@@ -1500,13 +1506,13 @@ const struct file_operations j4fs_dir_operations = {
 };
 
 const struct inode_operations j4fs_file_inode_operations = {
-	.permission = j4fs_permission,
+	.permission = NULL,
 };
 
 const struct inode_operations j4fs_dir_inode_operations = {
 	.create		= j4fs_create,
 	.lookup		= j4fs_lookup,
-	.permission	= j4fs_permission,
+	.permission	= NULL,
 };
 
 const struct super_operations j4fs_sops = {

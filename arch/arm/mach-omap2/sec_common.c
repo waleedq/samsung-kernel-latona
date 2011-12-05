@@ -237,6 +237,8 @@ int sec_common_update_reboot_reason(char mode, const char *cmd)
 		break;
 	case 'C':		/* reboot mode = Lockup */
 		reason = REBOOTMODE_CP_CRASH;
+		if (!strcmp(cmd, "Checkin scheduled forced"))
+			reason = REBOOTMODE_NORMAL;
 		break;
 #endif /* CONFIG_SAMSUNG_KERNEL_DEBUG */
 	case 't':		/* reboot mode = shutdown with TA */

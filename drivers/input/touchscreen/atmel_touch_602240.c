@@ -87,6 +87,7 @@ unsigned int g_i2c_debugging_enable=0;
 
 extern const unsigned char fw_bin_version;
 extern const unsigned char fw_bin_build;
+extern int fh_err_count;
 
 uint8_t touch_state;
 
@@ -898,7 +899,7 @@ unsigned char firmware_602240[] = {
 
 int is_suspend_state = 0; // to check suspend mode
 int is_boot_state = 1; // to check boot mode
-static int ta_state = 0;
+int ta_state = 0;
 int set_tsp_for_ta_detect(int state);
 
 extern void handle_multi_touch(uint8_t *atmel_msg);
@@ -3266,7 +3267,7 @@ U8 read_mem(U16 start, U8 size, U8 *mem)
 				gpio_direction_input(OMAP_GPIO_TOUCH_INT);
 				gpio_set_value(OMAP_GPIO_TOUCH_EN, 1);
 				msleep(80); // recommended value
-				calibrate_chip();
+				//calibrate_chip(); // Removed. When i2c error occur, this function call read_mem() as Recursion Function and then goes into infinite loop.
 			}
 
 			touch_state = 0;
@@ -3397,7 +3398,7 @@ U8 write_mem(U16 start, U8 size, U8 *mem)
 				gpio_direction_input(OMAP_GPIO_TOUCH_INT);
 				gpio_set_value(OMAP_GPIO_TOUCH_EN, 1);
 				msleep(80); // recommended value
-				calibrate_chip();
+				//calibrate_chip(); // Removed. When i2c error occur, this function call read_mem() as Recursion Function and then goes into infinite loop.
 			}
 
 			touch_state = 0;
@@ -3880,7 +3881,7 @@ void set_specific_noise_suppression_config(
     {
 	case LATONA:
         {
-        	noise_suppression_config->ctrl = 5;
+        	noise_suppression_config->ctrl = 135;
         	noise_suppression_config->gcaful = 0;
         	noise_suppression_config->gcafll = 0;
         	noise_suppression_config->actvgcafvalid = 3;
@@ -3916,7 +3917,14 @@ void set_specific_gripfacesuppression_config(
     {
 	case LATONA:
         {
-       	gripfacesuppression_config->ctrl = 7;
+       	gripfacesuppression_config->ctrl = 19;
+
+       	gripfacesuppression_config->xlogrip = 0;
+       	gripfacesuppression_config->xhigrip = 0;
+       	gripfacesuppression_config->ylogrip = 5;
+       	gripfacesuppression_config->yhigrip = 5;
+       	gripfacesuppression_config->maxtchs = 0;
+       	gripfacesuppression_config->reserved = 0;
 		gripfacesuppression_config->szthr1 = 30;
 		gripfacesuppression_config->szthr2 = 20;
 		gripfacesuppression_config->shpthr1 = 4;
@@ -4918,8 +4926,16 @@ int set_tsp_for_ta_detect(int state)
     }
 	else
 	{
+		fh_err_count = 0;
+		config_normal.touchscreen_config.blen = 16;
 		config_normal.touchscreen_config.tchthr = 32;//touchscreen_config.tchthr = 40;
 		config_normal.noise_suppression_config.noisethr = 27; //noise_suppression_config.noisethr = 30;  
+        	config_normal.noise_suppression_config.freq[0] = 29;
+        	config_normal.noise_suppression_config.freq[1] = 34;
+        	config_normal.noise_suppression_config.freq[2] = 39;
+        	config_normal.noise_suppression_config.freq[3] = 49;
+        	config_normal.noise_suppression_config.freq[4] = 58;
+		config_normal.power_config.idleacqint = 64;
 
 		printk(KERN_DEBUG "[TSP] normal mode\n");
 
@@ -4932,10 +4948,14 @@ int set_tsp_for_ta_detect(int state)
 			up(&g_tsp_mutex); 
 			return -1;
 		}
+
+		tmp= &config_normal.touchscreen_config.blen;
+		status = write_mem(object_address+6, 1, tmp);
+
 		tmp= &config_normal.touchscreen_config.tchthr; //&touchscreen_config.tchthr;
-		status = write_mem(object_address+7, 1, tmp);	
-	
-		if (status == WRITE_MEM_FAILED)
+		status |= write_mem(object_address+7, 1, tmp);	
+
+		if (status & WRITE_MEM_FAILED)
 		{
 			printk("\n[TSP][ERROR] TOUCH_MULTITOUCHSCREEN_T9 write_mem : %d\n", __LINE__);
 		}
@@ -4952,10 +4972,39 @@ int set_tsp_for_ta_detect(int state)
 		tmp= &config_normal.noise_suppression_config.noisethr;//&noise_suppression_config.noisethr ;
 		status = write_mem(object_address+8, 1, tmp);	
 		
-		if (status == WRITE_MEM_FAILED)
+		tmp= &config_normal.noise_suppression_config.freq[0];
+		status |= write_mem(object_address+11, 1, tmp);
+		tmp= &config_normal.noise_suppression_config.freq[1];
+		status |= write_mem(object_address+12, 1, tmp);	
+		tmp= &config_normal.noise_suppression_config.freq[2];
+		status |= write_mem(object_address+13, 1, tmp);	
+		tmp= &config_normal.noise_suppression_config.freq[3];
+		status |= write_mem(object_address+14, 1, tmp);	
+		tmp= &config_normal.noise_suppression_config.freq[4];
+		status |= write_mem(object_address+15, 1, tmp);
+
+		if (status & WRITE_MEM_FAILED)
 		{
 			printk("\n[TSP][ERROR] PROCG_NOISESUPPRESSION_T22 write_mem : %d\n", __LINE__);
-		}	
+		}
+
+		object_address = get_object_address(GEN_POWERCONFIG_T7, 0);
+
+		if (object_address == 0)
+		{
+			printk("\n[TSP][ERROR] GEN_POWERCONFIG_T7 object_address : %d\n", __LINE__);
+			enable_changeline_int();//enable_irq(qt602240->client->irq);
+			up(&g_tsp_mutex); 
+			return -1;
+		}
+
+		tmp = &config_normal.power_config.idleacqint;
+		status |= write_mem(object_address, 1, tmp);
+
+		if (status & WRITE_MEM_FAILED)
+		{
+			printk("\n[TSP][ERROR] PROCG_NOISESUPPRESSION_T7 write_mem : %d\n", __LINE__);
+		}
 	}
 
 	if(is_suspend_state != 2)
@@ -4967,6 +5016,114 @@ int set_tsp_for_ta_detect(int state)
 	return 1;
 }
 EXPORT_SYMBOL(set_tsp_for_ta_detect);
+
+void set_frequency_hopping_table(int mode)
+{
+	uint16_t object_address;
+	uint8_t *tmp;
+	uint8_t status;
+
+	config_normal.touchscreen_config.blen = 0;
+	config_normal.touchscreen_config.tchthr = 40;
+	config_normal.noise_suppression_config.noisethr = 35;
+	config_normal.power_config.idleacqint = 255;
+
+	if(mode == 0) {
+        	config_normal.noise_suppression_config.freq[0] = 29;
+        	config_normal.noise_suppression_config.freq[1] = 34;
+        	config_normal.noise_suppression_config.freq[2] = 39;
+        	config_normal.noise_suppression_config.freq[3] = 49;
+        	config_normal.noise_suppression_config.freq[4] = 58;
+	}
+	else if(mode == 1) {
+        	config_normal.noise_suppression_config.freq[0] = 45;
+        	config_normal.noise_suppression_config.freq[1] = 49;
+        	config_normal.noise_suppression_config.freq[2] = 55;
+        	config_normal.noise_suppression_config.freq[3] = 59;
+        	config_normal.noise_suppression_config.freq[4] = 63;
+	}
+	else if(mode == 2) {
+        	config_normal.noise_suppression_config.freq[0] = 10;
+        	config_normal.noise_suppression_config.freq[1] = 12;
+        	config_normal.noise_suppression_config.freq[2] = 18;
+        	config_normal.noise_suppression_config.freq[3] = 40;
+        	config_normal.noise_suppression_config.freq[4] = 72;
+	}
+	else if(mode == 3) {
+        	config_normal.noise_suppression_config.freq[0] = 7;
+        	config_normal.noise_suppression_config.freq[1] = 33;
+        	config_normal.noise_suppression_config.freq[2] = 39;
+        	config_normal.noise_suppression_config.freq[3] = 52;
+        	config_normal.noise_suppression_config.freq[4] = 64;
+	}
+
+	object_address = get_object_address(GEN_POWERCONFIG_T7, 0);
+
+	if (object_address == 0)
+	{
+		printk("\n[TSP][ERROR] GEN_POWERCONFIG_T7 object_address : %d\n", __LINE__);
+		enable_changeline_int();//enable_irq(qt602240->client->irq);
+		up(&g_tsp_mutex); 
+		return -1;
+	}
+
+	tmp = &config_normal.power_config.idleacqint;
+	status |= write_mem(object_address, 1, tmp);
+
+	if (status & WRITE_MEM_FAILED)
+	{
+		printk("\n[TSP][ERROR] PROCG_NOISESUPPRESSION_T7 write_mem : %d\n", __LINE__);
+	}
+
+	object_address = get_object_address(TOUCH_MULTITOUCHSCREEN_T9, 0);
+
+	if (object_address == 0)
+	{
+		printk("\n[TSP][ERROR] TOUCH_MULTITOUCHSCREEN_T9 object_address : %d\n", __LINE__);
+		enable_changeline_int();//enable_irq(qt602240->client->irq);
+		up(&g_tsp_mutex); 
+		return -1;
+	}
+
+	tmp= &config_normal.touchscreen_config.blen;
+	status = write_mem(object_address+6, 1, tmp);
+
+	tmp= &config_normal.touchscreen_config.tchthr; //&touchscreen_config.tchthr;
+	status |= write_mem(object_address+7, 1, tmp);	
+
+	if (status & WRITE_MEM_FAILED)
+	{
+		printk("\n[TSP][ERROR] TOUCH_MULTITOUCHSCREEN_T9 write_mem : %d\n", __LINE__);
+	}
+
+	object_address = get_object_address(PROCG_NOISESUPPRESSION_T22, 0);
+
+	if (object_address == 0)
+	{
+		printk("\n[TSP][ERROR] PROCG_NOISESUPPRESSION_T22 object_address : %d\n", __LINE__);
+		enable_changeline_int();//enable_irq(qt602240->client->irq);
+		up(&g_tsp_mutex); 
+		return -1;
+	}
+	tmp= &config_normal.noise_suppression_config.noisethr;//&noise_suppression_config.noisethr ;
+	status = write_mem(object_address+8, 1, tmp);	
+	
+	tmp= &config_normal.noise_suppression_config.freq[0];
+	status |= write_mem(object_address+11, 1, tmp);
+	tmp= &config_normal.noise_suppression_config.freq[1];
+	status |= write_mem(object_address+12, 1, tmp);	
+	tmp= &config_normal.noise_suppression_config.freq[2];
+	status |= write_mem(object_address+13, 1, tmp);	
+	tmp= &config_normal.noise_suppression_config.freq[3];
+	status |= write_mem(object_address+14, 1, tmp);	
+	tmp= &config_normal.noise_suppression_config.freq[4];
+	status |= write_mem(object_address+15, 1, tmp);
+
+	if (status & WRITE_MEM_FAILED)
+	{
+		printk("\n[TSP][ERROR] PROCG_NOISESUPPRESSION_T22 write_mem : %d\n", __LINE__);
+	}
+}
 
 /* firmware 2009.09.24 CHJ - end 2/2 */
 

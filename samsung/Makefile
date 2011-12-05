@@ -30,13 +30,13 @@ obj-$(CONFIG_SAMSUNG_BATTERY)	+= battery/
 obj-$(CONFIG_FMRADIO)	+= fm_si4709/
 obj-$(CONFIG_SAMSUNG_VIBETONZ)	+= vibetonz/
 #obj-$(CONFIG_SAMSUNG_J4FS)	+= j4fs/
-#obj-$(CONFIG_SAMSUNG_PARAM)	+= param/
+obj-$(CONFIG_SAMSUNG_PARAM)	+= param/
 obj-$(CONFIG_INPUT_YAS529)	+= yas529/
 obj-$(CONFIG_INPUT_BMA222)	+= bma222/
 obj-$(CONFIG_INPUT_GP2A)	+= gp2a/
 obj-$(CONFIG_INPUT_ORIENTATION) += orientation/
 obj-$(CONFIG_SUPPORT_GPS)	+= gps/
-#obj-$(CONFIG_INPUT_BH1721)	+= bh1721/
-#obj-$(CONFIG_INPUT_K3G)     += k3g/
-#obj-$(CONFIG_INPUT_BMA023)  += bma023/
+obj-$(CONFIG_INPUT_BH1721)	+= bh1721/
+obj-$(CONFIG_INPUT_K3G)     += k3g/
+obj-$(CONFIG_INPUT_BMA023)  += bma023/
 

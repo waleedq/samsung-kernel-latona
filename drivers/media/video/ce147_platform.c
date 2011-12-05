@@ -75,6 +75,16 @@ static int ce147_enable_gpio(void)
 {
   dprintk(CAM_INF, CE147_MOD_NAME "ce147_enable_gpio is called...\n");
 
+  gpio_free(OMAP3430_GPIO_CAMERA_EN);
+  gpio_free(OMAP3430_GPIO_CAMERA_EN2);
+#if (CONFIG_SAMSUNG_REL_HW_REV >= 1)    
+  gpio_free(OMAP3430_GPIO_CAMERA_EN3);
+#endif  
+  gpio_free(OMAP3430_GPIO_CAMERA_RST);
+  gpio_free(OMAP3430_GPIO_CAMERA_STBY);
+  gpio_free(OMAP3430_GPIO_VGA_RST);
+  gpio_free(OMAP3430_GPIO_VGA_STBY);  
+
   if (gpio_request(OMAP3430_GPIO_CAMERA_EN,"CAM EN") != 0)
   {
     printk(CE147_MOD_NAME "Could not request GPIO %d\n", OMAP3430_GPIO_CAMERA_EN);

@@ -788,6 +788,11 @@ fsa9480_i2c_client  = omap_gpio_i2c_init(OMAP_GPIO_AP_I2C_SDA,
 
 	wake_lock_init(&fsa9480_wake_lock, WAKE_LOCK_SUSPEND, "FSA9480");
 
+    /*reset UIC*/
+	DEBUG_FSA9480("[FSA9480] %s Reset UIC\n ",__func__);
+	fsa9480_write(fsa9480_i2c_client, REGISTER_CONTROL, 0x1E);
+	mdelay(10);
+	
 	fsa9480_init_status();
 
 	fsa9480_init();

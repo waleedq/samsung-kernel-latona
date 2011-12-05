@@ -745,10 +745,10 @@ static inline int bind_ovl2display(struct s3d_ovl_device *dev,
 	}
 
 	if (mgr) {
-	r = ovl->dssovl->unset_manager(ovl->dssovl);
+		r = ovl->dssovl->unset_manager(ovl->dssovl);
 		if (r) {
-		S3DERR("couldn't unbind manager from ovl\n");
-		return r;
+			S3DERR("couldn't unbind manager from ovl\n");
+			return r;
 		}
 	}
 

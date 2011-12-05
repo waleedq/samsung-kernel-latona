@@ -24,9 +24,10 @@
 #include <linux/dma-mapping.h>
 #include <linux/io.h>
 #include <linux/usb/android_composite.h>
-
+#include <linux/usb/f_accessory.h>
 #include <linux/usb/musb.h>
 #include <linux/pm_runtime.h>
+#include <asm/sizes.h>
 
 #include <mach/hardware.h>
 #include <mach/irqs.h>
@@ -35,9 +36,22 @@
 #include <plat/omap_device.h>
 #include <plat/omap_hwmod.h>
 #include <plat/omap-pm.h>
+#ifdef CONFIG_ARCH_OMAP3
+#include "../../../drivers/usb/musb/musb_io.h"
+#include "../../../drivers/usb/musb/musb_regs.h"
+#include "../../../drivers/usb/musb/omap2430.h"
+int musb_module_reset(void);
+#endif /* CONFIG_ARCH_OMAP3 */
+
 
 #define CONTROL_DEV_CONF                0x300
 #define PHY_PD				(1 << 0)
+
+
+#define OTG_SYSCONFIG                  0x404
+#define OTG_SYSC_SOFTRESET         BIT(1)
+#define OTG_FORCESTDBY                 0x414
+
 
 #ifdef CONFIG_ARCH_OMAP4
 #define DIE_ID_REG_BASE         (L4_44XX_PHYS + 0x2000)
@@ -143,6 +157,17 @@ static char *usb_functions_acm_ums_adb[] = {
 static char *usb_functions_mtp[] = {
 	"mtp",
 };
+#ifdef CONFIG_USB_ANDROID_ACCESSORY	
+/* accessory mode */
+static char *usb_functions_accessory[] = {
+	"accessory",
+};
+
+static char *usb_functions_accessory_adb[] = {
+	"accessory",
+	"adb",
+};
+#endif
 #else
 //original
 static char *usb_functions_rndis_adb[] = {
@@ -177,6 +202,9 @@ static char *usb_functions_all[] = {
 	"usb_mass_storage",
 	"acm",
 	"adb",
+#ifdef CONFIG_USB_ANDROID_ACCESSORY	
+	"accessory",
+#endif	//CONFIG_USB_ANDROID_ACCESSORY
 	"rndis",
    #ifndef CONFIG_USB_ANDROID_SAMSUNG_KIES_UMS
 	"mtp",
@@ -262,6 +290,19 @@ static struct android_usb_product usb_products[] = {
 		.s		= ANDROID_RNDIS_CONFIG_STRING,
 		.mode		= USBSTATUS_VTP,
 	},
+#ifdef CONFIG_USB_ANDROID_ACCESSORY		
+	{
+		.vendor_id	= USB_ACCESSORY_VENDOR_ID,
+		.product_id	= USB_ACCESSORY_PRODUCT_ID,
+		.num_functions	= ARRAY_SIZE(usb_functions_accessory),
+		.functions	= usb_functions_accessory,		
+		.bDeviceClass	= 0xEF,
+		.bDeviceSubClass= 0x02,
+		.bDeviceProtocol= 0x01,
+		.s		= ANDROID_ACC_CONFIG_STRING,
+		.mode		= USBSTATUS_ACCESSORY,
+	},
+#endif	
 #    else /* Not used KIES_UMS */
 	{
 		.product_id	= SAMSUNG_DEBUG_PRODUCT_ID,
@@ -293,6 +334,19 @@ static struct android_usb_product usb_products[] = {
 		.s		= ANDROID_UMS_CONFIG_STRING,
 		.mode		= USBSTATUS_UMS,
 	},
+#ifdef CONFIG_USB_ANDROID_ACCESSORY	
+	{
+		.vendor_id	= USB_ACCESSORY_VENDOR_ID,
+		.product_id	= USB_ACCESSORY_PRODUCT_ID,
+		.num_functions	= ARRAY_SIZE(usb_functions_accessory),
+		.functions	= usb_functions_accessory,		
+		.bDeviceClass	= 0xEF,
+		.bDeviceSubClass= 0x02,
+		.bDeviceProtocol= 0x01,
+		.s		= ANDROID_ACC_CONFIG_STRING,
+		.mode		= USBSTATUS_ACCESSORY,
+	},
+#endif	
 	{
 		.product_id	= SAMSUNG_RNDIS_PRODUCT_ID,
 		.num_functions	= ARRAY_SIZE(usb_functions_rndis),
@@ -624,10 +678,11 @@ void __init usb_musb_init(struct omap_musb_board_data *board_data)
 	char oh_name[MAX_OMAP_MUSB_HWMOD_NAME_LEN];
 	struct omap_hwmod *oh;
 	struct omap_device *od;
-	struct platform_device *pdev;
+	struct platform_device *pdev = NULL;
 	struct device	*dev;
 	int l, bus_id = -1;
 	struct musb_hdrc_platform_data *pdata;
+	void __iomem *otg_base;
 
 	if (!board_data) {
 		pr_err("Board data is required for hdrc device register\n");
@@ -662,7 +717,7 @@ void __init usb_musb_init(struct omap_musb_board_data *board_data)
 		 * Errata 1.166 idle_req/ack is broken in omap3430
 		 * workaround is to disable the autodile bit for omap3430.
 		 */
-		if (cpu_is_omap3430())
+		if (cpu_is_omap3430() || cpu_is_omap3630())
 			oh->flags |= HWMOD_NO_OCP_AUTOIDLE;
 
 		musb_plat.oh = oh;
@@ -687,13 +742,107 @@ void __init usb_musb_init(struct omap_musb_board_data *board_data)
 		}
 
 		/*powerdown the phy*/
+               if (omap_rev() > OMAP3630_REV_ES1_1) {
+                       otg_base = ioremap(OMAP34XX_HSUSB_OTG_BASE, SZ_4K);
+
+                       if (WARN_ON(!otg_base))
+                               return;
+
+                       /* Reset OTG controller.  After reset, it will be in
+                        * force-idle, force-standby mode. */
+                       __raw_writel(OTG_SYSC_SOFTRESET, otg_base +
+                                                               OTG_SYSCONFIG);
+
+                       iounmap(otg_base);
+               }
+		
 		if (board_data->interface_type == MUSB_INTERFACE_UTMI)
 			omap_writel(PHY_PD, DIE_ID_REG_BASE + CONTROL_DEV_CONF);
 
 		usb_gadget_init();
+#ifdef CONFIG_ARCH_OMAP3
+               if(pdev){
+                       musb_plat.device_enable(pdev);
+                       musb_module_reset();
+                       musb_plat.device_idle(pdev);
+               }else{
+                       pr_err("Could not reset musb module.\n");
+               }
+#endif
 	}
 }
 
+#ifdef CONFIG_ARCH_OMAP3
+/*
+Errata ID: i445
+
+Instead of using the OTG_SYSCONFIG:SOFTRESET bit filed, the user can use the
+SOFTRESET register of the USB module at offset 0x7F, which will have the same effect
+and will allow the hsusb_stp   pin to go high and the reset command to be sent.
+As soon as this is done, LINK and PHY can start negotiating and function normally.
+ */
+int musb_module_reset(void)
+{
+       struct omap_hwmod *oh = oh_p;
+       struct platform_device *pdev;
+       struct resource *iomem;
+       void __iomem    *base;
+       int ret = 0;
+       u32 val;
+
+       if(oh){
+               pdev = &oh->od->pdev;
+               iomem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+               if (!iomem){
+                       pr_err("musb_module_reset: no mem resource\n");
+                       return -EINVAL;
+               }
+       }else{
+               /* reset called at boot */
+               iomem = kmalloc(sizeof(struct resource), GFP_KERNEL);
+               if(!iomem){
+                       pr_err("musb_module_reset: memory alloc failed\n");
+                       return -ENOMEM;
+               }
+               iomem->start = OMAP34XX_HSUSB_OTG_BASE;
+               iomem->end = OMAP34XX_HSUSB_OTG_BASE + SZ_4K - 1;
+       }
+
+       base = ioremap(iomem->start, resource_size(iomem));
+       if (!base) {
+               pr_err("musb_module_reset: usb otg ioremap failed\n");
+               ret = -ENOMEM;
+               goto out;
+       }
+
+       /* recommended by TI HW team.
+          step1. set USB OTG_SYSCONFIG:SOFTRESET
+          step2. set SOFTRESET of the USB module(0x7F).
+          step3. wait 3ms.
+        */
+#if 0
+       /* If set the otg sysconfig.softreset here,
+          usb adb does not connected, when the boot without usb cable.
+          So, softreset do not use.
+        */
+       /* softreset */
+       val = musb_readl(base, OTG_SYSCONFIG);
+       val |= SOFTRST;
+       musb_writel(base, OTG_SYSCONFIG, val);
+#endif
+       /* module reset */
+       musb_writeb(base, MUSB_SOFT_RST, 0x3);
+       mdelay(3); /* recommended by TI HW team */
+
+       iounmap(base);
+out:
+       if(!oh){
+               kfree(iomem);
+       }
+
+       return ret;
+ }
+#endif /* CONFIG_ARCH_OMAP3 */
 void musb_context_save_restore(enum musb_state state)
 {
 	struct omap_hwmod *oh = oh_p;
@@ -730,8 +879,7 @@ void musb_context_save_restore(enum musb_state state)
 	}
 
 	if (drv) {
-#if 0		
-//#ifdef CONFIG_PM_RUNTIME
+#ifdef CONFIG_PM_RUNTIME
 		struct musb_hdrc_platform_data *pdata = dev->platform_data;
 		const struct dev_pm_ops *pm = drv->pm;
 
@@ -763,7 +911,7 @@ void musb_context_save_restore(enum musb_state state)
 					clk_disable(clk48m);
 				}
 				/* Enable ENABLEFORCE bit*/
-				__raw_writel(0x1, base + 0x414);
+				__raw_writel(0x1, base + OTG_FORCESTDBY);
 				pdata->device_idle(pdev);
 				break;
 
@@ -792,7 +940,7 @@ void musb_context_save_restore(enum musb_state state)
 					clk_enable(clk48m);
 				}
 				/* Disable ENABLEFORCE bit*/
-				__raw_writel(0x1, base + 0x414);
+				__raw_writel(0x0, base + OTG_FORCESTDBY);
 
 				break;
 

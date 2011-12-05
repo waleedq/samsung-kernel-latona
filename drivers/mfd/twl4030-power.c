@@ -548,6 +548,7 @@ void __init twl4030_power_init(struct twl4030_power_data *twl4030_scripts)
 	int i;
 	struct twl4030_resconfig *resconfig;
 	u8 address = twl4030_start_script_address;
+	u8 reg_val = 0;
 
 	err = twl_i2c_write_u8(TWL4030_MODULE_PM_MASTER, R_KEY_1,
 				R_PROTECT_KEY);
@@ -577,6 +578,18 @@ void __init twl4030_power_init(struct twl4030_power_data *twl4030_scripts)
 		}
 	}
 
+#if 1
+    // Change VIO_1.8v from 1.8v to 1.85v [+]
+    err = twl_i2c_write_u8(TWL4030_MODULE_PM_RECEIVER, 0x01, 0x54);
+    if(err) {
+        pr_err("TWL4030 failed to write VIO_VSEL register!.\n");
+    }
+    else {
+        twl_i2c_read_u8(TWL4030_MODULE_PM_RECEIVER, &reg_val, 0x54);
+        pr_err("TWL4030 success to write VIO_VSEL register(= 0x%02x)!.\n", reg_val);
+    }
+    // Change VIO_1.8v from 1.8v to 1.85v [-]
+#endif
 	// Clear STARTON_RTC bit in CFG_Px_TRANSITION register [+]
     err = twl_i2c_write_u8(TWL4030_MODULE_PM_MASTER, 0xe7, R_CFG_P1_TRANSITION);
     if(err) {

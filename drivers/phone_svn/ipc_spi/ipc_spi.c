@@ -1915,6 +1915,8 @@ static u32 rx_prev_data_size = 0;
 static u32 rx_prev_temp_header_size = 0;
 static u32 rx_prev_data_remain = 0;
 static u8 *rx_prev_temp_header = NULL;
+static int stop_spi_sync = 0;
+static int stop_spi_sync_count = 0;
 
 static void ipc_spi_rx_process( u8 *rx_b,  u8 *rx_save_b, struct ipc_spi *od )
 {
@@ -2941,6 +2943,7 @@ SILENT_RESET :
 			clear_tx_buf = 0;
 			skip_SRDY_chk = 0;
 			ipc_spi_irq_log_flag = 0;
+			stop_spi_sync = 0;
 
 			init_completion( &ril_init );
 			ipc_spi_clear_all_vbuff();
@@ -2991,6 +2994,7 @@ RETRY_WAIT_SEM :
 						clear_tx_buf = 0;
 						skip_SRDY_chk = 0;
 						ipc_spi_irq_log_flag = 0;
+						stop_spi_sync = 0;
 
 						init_completion( &ril_init );
 						ipc_spi_clear_all_vbuff();
@@ -3045,6 +3049,7 @@ RETRY_WAIT_SEM :
 				clear_tx_buf = 0;
 				skip_SRDY_chk = 0;
 				ipc_spi_irq_log_flag = 0;
+				stop_spi_sync = 0;
 
 				init_completion( &ril_init );
 				ipc_spi_clear_all_vbuff();
@@ -3063,7 +3068,19 @@ RETRY_WAIT_SEM :
 //			dev_dbg( &p_ipc_spi->dev, "(%d) transmit start.\n", __LINE__ );
 
 			ipc_spi_swap_data_htn( tx_buf, DEF_BUF_SIZE + 4 );    //host to network
-            
+
+			stop_spi_sync_count = 0;
+			while (stop_spi_sync) {
+				if (!(stop_spi_sync_count % 100))
+					printk("[SPI STOP], stop_spi_sync : %d\n", stop_spi_sync);
+				stop_spi_sync_count++;
+				
+				if (stop_spi_sync_count > 5000)
+					break;
+				msleep(10);
+			}
+			dev_dbg(&p_ipc_spi->dev, "(%d) Checked stop_spi_sync : %d(%d)\n",
+						__LINE__, stop_spi_sync, stop_spi_sync_count);
 
 			retval = ipc_spi_tx_rx_sync( tx_buf, rx_buf, DEF_BUF_SIZE + 4 );
 			if( retval != 0 ) {
@@ -3113,6 +3130,7 @@ RETRY_WAIT_SEM :
 				clear_tx_buf = 0;
 				skip_SRDY_chk = 0;
 				ipc_spi_irq_log_flag = 0;
+				stop_spi_sync = 0;
 
 				init_completion( &ril_init );
 				ipc_spi_clear_all_vbuff();
@@ -3537,6 +3555,7 @@ void  ipc_spi_restart_spi( void )
 	printk( "Phone Restart SPI Init.\n" );
 
 	cp_restart = 1;
+	stop_spi_sync = 0;
 }
 EXPORT_SYMBOL( ipc_spi_restart_spi );
 
@@ -3708,6 +3727,20 @@ static int ipc_spi_remove( struct spi_device *spi )
 	return 0;
 }
 
+static int ipc_spi_suspend(struct platform_device *pdev, pm_message_t state)
+{
+	printk("IPC_SPI SUSPEND\n");
+	stop_spi_sync = 1;
+	return 0;
+}
+
+static int ipc_spi_resume(struct platform_device *pdev)
+{
+	printk("IPC_SPI RESUME\n");
+	stop_spi_sync = 0;
+	return 0;
+}
+
 static struct platform_driver ipc_spi_platform_driver = {
 	.probe = ipc_spi_platform_probe,
 	.remove = __devexit_p( ipc_spi_platform_remove ),
@@ -3721,6 +3754,8 @@ static struct platform_driver ipc_spi_platform_driver = {
 static struct spi_driver ipc_spi_driver = {
 	.probe = ipc_spi_probe,
 	.remove = __devexit_p( ipc_spi_remove ),
+	.suspend = ipc_spi_suspend,
+	.resume = ipc_spi_resume,
 	.driver = {
 		.name = "ipc_spi",
 		.bus = &spi_bus_type,

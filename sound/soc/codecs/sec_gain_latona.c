@@ -260,8 +260,8 @@ void set_codec_gain(struct snd_soc_codec *codec, int mode, int device)
 				break;
 			case SPK: 
 				//play when voice
-				twl4030_write(codec, 0x12, (0x1 << 6) | 0x2f); // ARXR2PGA (fine[0:5], Corse[6:7])
-				twl4030_write(codec, 0x13, (0x1 << 6) | 0x2f); // ARXL2PGA (fine[0:5], Corse[6:7])
+				twl4030_write(codec, 0x12, (0x2 << 6) | 0x2f); // ARXR2PGA (fine[0:5], Corse[6:7])
+				twl4030_write(codec, 0x13, (0x2 << 6) | 0x2f); // ARXL2PGA (fine[0:5], Corse[6:7])
 				
 #ifndef APPLY_AUDIOTEST_APP				
 				//TX Common

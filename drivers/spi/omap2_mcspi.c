@@ -41,7 +41,7 @@
 #include <plat/clock.h>
 #include <plat/mcspi.h>
 
-#define HS_SRAM_CRASH_WA
+
 
 #define OMAP2_MCSPI_MAX_FREQ		48000000
 #define OMAP2_MCSPI_MAX_FIFODEPTH       64
@@ -116,6 +116,8 @@ struct omap2_mcspi {
 	u8			dma_mode;
 	u8			force_cs_mode;
 	u16			fifo_depth;
+	struct completion	irq_completion;
+	u32			irq_status;
 	struct  device          *dev;
 };
 
@@ -229,22 +231,31 @@ static inline void mcspi_write_chconf0(const struct spi_device *spi, u32 val)
 	mcspi_read_cs_reg(spi, OMAP2_MCSPI_CHCONF0);
 }
 
+static irqreturn_t mcspi_isr(int irq, void *data)
+{
+	struct omap2_mcspi *mcspi;
+	u32 irqstatus;
+
+	mcspi = data;
+	/* Save and clear the status register to ack the IRQ */
+	irqstatus = mcspi_read_reg(mcspi->master,
+			OMAP2_MCSPI_IRQSTATUS);
+	irqstatus &= mcspi_read_reg(mcspi->master,
+			OMAP2_MCSPI_IRQENABLE);
+	mcspi_write_reg(mcspi->master, OMAP2_MCSPI_IRQSTATUS, irqstatus);
+
+	mcspi->irq_status = irqstatus;
+	irqstatus = mcspi_read_reg(mcspi->master, OMAP2_MCSPI_IRQSTATUS);
+
+	complete(&mcspi->irq_completion);
+
+	return IRQ_HANDLED;
+}
+
 static void omap2_mcspi_set_dma_req(const struct spi_device *spi,
 		int is_read, int enable)
 {
 	u32 l, rw;
-
-#ifdef HS_SRAM_CRASH_WA	
-	struct omap2_mcspi	*mcspi;            //added 	
-	mcspi = spi_master_get_devdata(spi->master); //added
-
-	//printk("%s ******\n",spi->modalias);
-
-	if(strcmp("nt35510_disp_spi",spi->modalias)==0)
-		{
-			 pm_runtime_get_sync(mcspi->dev);  //added 
-		}
-#endif	
 
 	l = mcspi_cached_chconf0(spi);
 
@@ -255,14 +266,6 @@ static void omap2_mcspi_set_dma_req(const struct spi_device *spi,
 
 	MOD_REG_BIT(l, rw, enable);
 	mcspi_write_chconf0(spi, l);
-#ifdef HS_SRAM_CRASH_WA
-	if(strcmp("nt35510_disp_spi",spi->modalias)==0)
-		{
-			 pm_runtime_put_sync(mcspi->dev);	//added 
-		}
-#endif		
-		label:
-			return;
 }
 
 #ifdef CONFIG_SPI_DEBUG
@@ -497,14 +500,12 @@ omap2_mcspi_txrx_dma(struct spi_device *spi, struct spi_transfer *xfer)
 	unsigned long		base, tx_reg, rx_reg;
 	int			word_len, data_type, element_count;
 	int			elements = 0, frame_count, sync_type;
-	u32			l;
+	u32			l, irq_enable;
 	u8			* rx;
 	const u8		* tx;
-	void __iomem            *irqstat_reg;
 
 	mcspi = spi_master_get_devdata(spi->master);
 	mcspi_dma = &mcspi->dma_channels[spi->chip_select];
-	irqstat_reg = mcspi->base + mcspi->regs[OMAP2_MCSPI_IRQSTATUS];
 	l = mcspi_cached_chconf0(spi);
 
 	count = xfer->len;
@@ -594,6 +595,17 @@ omap2_mcspi_txrx_dma(struct spi_device *spi, struct spi_transfer *xfer)
 	}
 
 	if (tx != NULL) {
+		/* if Fifo is used, enable EOW to be notified of
+		 * end of tranfer
+		 */
+		if (mcspi->fifo_depth != 0) {
+			mcspi_write_reg(mcspi->master, OMAP2_MCSPI_IRQSTATUS,
+					OMAP2_MCSPI_IRQ_EOW);
+			irq_enable = mcspi_read_reg(mcspi->master,
+					OMAP2_MCSPI_IRQENABLE);
+			mcspi_write_reg(mcspi->master, OMAP2_MCSPI_IRQENABLE,
+					irq_enable|OMAP2_MCSPI_IRQ_EOW);
+		}
 		omap_start_dma(mcspi_dma->dma_tx_channel);
 		omap2_mcspi_set_dma_req(spi, 0, 1);
 	}
@@ -601,14 +613,20 @@ omap2_mcspi_txrx_dma(struct spi_device *spi, struct spi_transfer *xfer)
 	if (tx != NULL) {
 		wait_for_completion(&mcspi_dma->dma_tx_completion);
 
+		/* if Fifo is used, wait for Fifo content be transferred */
 		if (mcspi->fifo_depth != 0) {
-			if (mcspi_wait_for_reg_bit(irqstat_reg,
-				OMAP2_MCSPI_IRQ_EOW) < 0)
-					dev_err(&spi->dev, "TXS timed out\n");
-
-		mcspi_write_reg(mcspi->master, OMAP2_MCSPI_IRQSTATUS,
-				OMAP2_MCSPI_IRQ_EOW);
-
+			wait_for_completion(&mcspi->irq_completion);
+			if (mcspi->irq_status & OMAP2_MCSPI_IRQ_EOW) {
+				irq_enable = mcspi_read_reg(mcspi->master,
+					OMAP2_MCSPI_IRQENABLE);
+				mcspi_write_reg(mcspi->master,
+					OMAP2_MCSPI_IRQENABLE,
+					irq_enable&~OMAP2_MCSPI_IRQ_EOW);
+			}
+			else {
+				dev_err(&spi->dev, "Not an EOW McSPI IRQ");
+				return -1;
+			}
 		omap2_mcspi_set_txfifo(spi, count, 0);
 		}
 
@@ -1013,6 +1031,7 @@ static int omap2_mcspi_request_dma(struct spi_device *spi)
 
 	init_completion(&mcspi_dma->dma_rx_completion);
 	init_completion(&mcspi_dma->dma_tx_completion);
+	init_completion(&mcspi->irq_completion);
 
 	return 0;
 }
@@ -1463,7 +1482,15 @@ static int __init omap2_mcspi_probe(struct platform_device *pdev)
 	if (status < 0)
 		goto err4;
 
+	status = request_irq(platform_get_irq_byname(pdev, "irq"), mcspi_isr,
+			     IRQF_TRIGGER_HIGH, "mcspi_irq", mcspi);
+	if (status < 0) {
+		printk(KERN_ERR "McSPI irq interrupt request failed");
+		goto err5;
+	}
 	return status;
+err5:
+	spi_unregister_master(master);
 err4:
 	spi_master_put(master);
 err3:

@@ -686,6 +686,7 @@ static inline void omap2_mmc_mux(struct omap_mmc_platform_data *mmc_controller,
 	if (cpu_is_omap34xx()) {
 		u32 dev_conf = 0, v_shift = 0;
 		if (controller_nr == 0) {
+#if !defined(CONFIG_MACH_OMAP_SAMSUNG)
 			omap_mux_init_signal("sdmmc1_clk",
 				OMAP_PIN_INPUT_PULLUP);
 			omap_mux_init_signal("sdmmc1_cmd",
@@ -712,10 +713,13 @@ static inline void omap2_mmc_mux(struct omap_mmc_platform_data *mmc_controller,
 				omap_mux_init_signal("sdmmc1_dat7",
 					OMAP_PIN_INPUT_PULLUP);
 			}
+#endif
 			dev_conf = OMAP2_CONTROL_DEVCONF0;
 			v_shift = OMAP2_MMCSDIO1ADPCLKISEL;
 		}
 		if (controller_nr == 1) {
+
+#if !defined(CONFIG_MACH_OMAP_SAMSUNG)
 			/* MMC2 */
 			omap_mux_init_signal("sdmmc2_clk",
 				OMAP_PIN_INPUT_PULLUP);
@@ -748,6 +752,7 @@ static inline void omap2_mmc_mux(struct omap_mmc_platform_data *mmc_controller,
 				omap_mux_init_signal("sdmmc2_dat7.sdmmc2_dat7",
 					OMAP_PIN_INPUT_PULLUP);
 			}
+#endif
 			dev_conf = OMAP343X_CONTROL_DEVCONF1;
 			v_shift = OMAP2_MMCSDIO2ADPCLKISEL;
 		}

@@ -40,8 +40,13 @@
 
 #define KEYCODE_SENDEND 226
 
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )
+#define SEND_END_CHECK_COUNT	3
+#define SEND_END_CHECK_TIME get_jiffies_64() + (HZ/7)// 1000ms / 7 = 125ms
+#else
 #define SEND_END_CHECK_COUNT	2
 #define SEND_END_CHECK_TIME get_jiffies_64() + (HZ/11)// 1000ms / 11 = 90ms
+#endif
 #define WAKE_LOCK_TIME (HZ*1)// 1000ms  = 1sec
 
 struct switch_dev switch_sendend = {
@@ -110,7 +115,11 @@ static void release_sysfs_event(struct work_struct *work)
 		
 	if(earkey_stats)
 	{
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )	
+		if(adc_value > 4)
+#else
 		if(adc_value > 1)
+#endif		
 		{
 			wake_lock( &earkey_wakelock);
 			switch_set_state(&switch_sendend, 1);

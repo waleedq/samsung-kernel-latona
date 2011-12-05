@@ -37,6 +37,7 @@
 #include "omap-mcbsp.h"
 #include "omap-pcm.h"
 
+#define MCBSP_SUSPEND_RESUME
 #define OMAP_MCBSP_RATES	(SNDRV_PCM_RATE_8000_96000)
 
 #define OMAP_MCBSP_SOC_SINGLE_S16_EXT(xname, xmin, xmax, \
@@ -769,6 +770,30 @@ static int omap_mcbsp_dai_set_dai_sysclk(struct snd_soc_dai *cpu_dai,
 	return err;
 }
 
+#ifdef MCBSP_SUSPEND_RESUME
+int omap_mcbsp_dai_suspend(struct snd_soc_dai *cpu_dai)
+{   
+    struct omap_mcbsp_data *mcbsp_data = snd_soc_dai_get_drvdata(cpu_dai);
+
+    if (cpu_dai->active)               
+        printk(KERN_ERR "mcbsp_dai_suspend() %d\n", mcbsp_data->bus_id);
+
+    return 0;
+}
+
+int omap_mcbsp_dai_resume(struct snd_soc_dai *cpu_dai)
+{
+    struct omap_mcbsp_data *mcbsp_data = snd_soc_dai_get_drvdata(cpu_dai);
+
+    if (cpu_dai->active) {             
+        printk("mcbsp_dai_resume() %d\n", mcbsp_data->bus_id);
+        omap_mcbsp_config(mcbsp_data->bus_id, &mcbsp_data->regs);
+    }
+
+    return 0;
+}
+#endif // MCBSP_SUSPEND_RESUME
+
 static struct snd_soc_dai_ops mcbsp_dai_ops = {
 	.startup	= omap_mcbsp_dai_startup,
 	.shutdown	= omap_mcbsp_dai_shutdown,
@@ -803,6 +828,10 @@ static struct snd_soc_dai_driver omap_mcbsp_dai =
 		.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S32_LE,
 	},
 	.ops = &mcbsp_dai_ops,
+#ifdef MCBSP_SUSPEND_RESUME
+    .suspend = omap_mcbsp_dai_suspend,
+    .resume = omap_mcbsp_dai_resume,
+#endif // MCBSP_SUSPEND_RESUME
 };
 
 EXPORT_SYMBOL_GPL(omap_mcbsp_dai);

@@ -1,4 +1,3 @@
-#define TMP_AUX_CLK_HACK 1 /* should be removed by Nov 13, 2010 */
 #define SR_WA
 /*
  * ipu_pm.c
@@ -311,7 +310,10 @@ static struct workqueue_struct *ipu_resources;
 static struct workqueue_struct *ipu_clean_up;
 struct work_struct clean;
 static DECLARE_COMPLETION(ipu_clean_up_comp);
-static bool recover;
+static u32 recover;
+#ifdef CONFIG_DUCATI_WATCH_DOG
+static bool wd_error;
+#endif
 
 /* Latency cstrs */
 #ifdef CONFIG_OMAP_PM
@@ -341,7 +343,6 @@ static void __iomem *fdifHandle;
 static struct clk *clk_opt_iss;
 /* Ducati Interrupt Capable Gptimers */
 static int ipu_timer_list[NUM_IPU_TIMERS] = {
-	GP_TIMER_9,
 	GP_TIMER_11};
 
 /* I2C spinlock assignment mapping table */
@@ -356,25 +357,13 @@ static int i2c_spinlock_list[I2C_BUS_MAX + 1] = {
 static char *ipu_regulator_name[REGULATOR_MAX] = {
 	"cam2pwr"};
 
-static struct clk *aux_clk_ptr[NUM_AUX_CLK];
+static struct ipu_pm_aux_clks *aux_clk_p;
 
-static char *aux_clk_name[NUM_AUX_CLK] = {
-	"auxclk0_ck",
-	"auxclk1_ck",
-	"auxclk2_ck",
-	"auxclk3_ck",
-	"auxclk4_ck",
-	"auxclk5_ck",
-} ;
-
-static char *aux_clk_source_name[] = {
+static char *clk_src_name[NUM_SRC_CLK] = {
 	"sys_clkin_ck",
 	"dpll_core_m3x2_ck",
 	"dpll_per_m3x2_ck",
-	NULL
 } ;
-
-/* static struct clk *aux_clk_source_clocks[3]; */
 
 static struct ipu_pm_module_object ipu_pm_state = {
 	.def_cfg.reserved = 1,
@@ -472,19 +461,24 @@ static void ipu_pm_recover_schedule(void)
 	struct ipu_pm_object *handle;
 
 	INIT_COMPLETION(ipu_clean_up_comp);
-	recover = true;
+	recover = 0;
 
 	/* get the handle to proper ipu pm object
 	 * and flush any pending fifo message
 	 */
 	handle = ipu_pm_get_handle(APP_M3);
-	if (handle)
+	if (handle) {
+		recover++;
 		kfifo_reset(&handle->fifo);
+	}
 	handle = ipu_pm_get_handle(SYS_M3);
-	if (handle)
+	if (handle) {
+		recover++;
 		kfifo_reset(&handle->fifo);
+	}
 
 	/* schedule clean up work */
+	pr_debug("%s:%d:Schedule Recover\n", __func__, __LINE__);
 	queue_work(ipu_clean_up, &clean);
 }
 
@@ -497,7 +491,7 @@ static void ipu_pm_clean_res(void)
 	/* Check RAT and call each release function
 	 * per resource in rcb
 	 */
-	unsigned used_res_mask = global_rcb->rat;
+	unsigned used_res_mask;
 	struct ipu_pm_object *handle;
 	struct ipu_pm_params *params;
 	struct rcb_block *rcb_p;
@@ -513,7 +507,8 @@ static void ipu_pm_clean_res(void)
 	 * rcb = 1 is reserved.
 	 * Start in 2
 	 */
-	used_res_mask &= RESERVED_RCBS;
+	mutex_lock(ipu_pm_state.gate_handle);
+	used_res_mask = global_rcb->rat & RESERVED_RCBS;
 	pr_debug("Resources Mask 0x%x\n", used_res_mask);
 
 	if (!used_res_mask)
@@ -566,13 +561,16 @@ static void ipu_pm_clean_res(void)
 	}
 
 	global_rcb->rat = used_res_mask;
-	if (!used_res_mask)
-		goto complete_exit;
 
-	pr_warning("%s:Not all resources were released", __func__);
-	return;
+	/* Maybe an already released resource or currupted RAT
+	 * anyway call complete to allow the reload of the images
+	 */
+	if (used_res_mask)
+		pr_warning("%s: Not all resources were released\n", __func__);
+
 complete_exit:
 	complete_all(&ipu_clean_up_comp);
+	mutex_unlock(ipu_pm_state.gate_handle);
 	return;
 }
 
@@ -582,6 +580,20 @@ complete_exit:
  */
 static void ipu_pm_clean_work(struct work_struct *work)
 {
+
+#ifdef CONFIG_DUCATI_WATCH_DOG
+	/* Notify devh about WD error */
+	if (wd_error) {
+		ipu_pm_notify_event(0, NULL);
+		wd_error = false;
+	}
+#endif
+
+#ifdef CONFIG_SYSLINK_IPU_SELF_HIBERNATION
+	/* Stop timer */
+	if (sys_rproc->dmtimer != NULL)
+		omap_dm_timer_stop(sys_rproc->dmtimer);
+#endif
 	ipu_pm_clean_res();
 }
 
@@ -640,6 +652,8 @@ static void ipu_pm_work(struct work_struct *work)
 	params = handle->params;
 	if (WARN_ON(params == NULL))
 		return;
+
+	pr_debug("Processing %d msgs\n", kfifo_len(&handle->fifo));
 
 	while (kfifo_len(&handle->fifo) >= sizeof(im)) {
 		/* set retval for each iteration asumming error */
@@ -735,10 +749,11 @@ void ipu_pm_callback(u16 proc_id, u16 line_id, u32 event_id,
 	im.pm_msg = payload;
 
 	spin_lock_irq(&handle->lock);
-	if (kfifo_avail(&handle->fifo) >= sizeof(im)) {
+	if (kfifo_avail(&handle->fifo) >= sizeof(im))
 		kfifo_in(&handle->fifo, (unsigned char *)&im, sizeof(im));
-		queue_work(ipu_resources, &handle->work);
-	}
+	else
+		pr_err("fifo for resources full losing messages!\n");
+	queue_work(ipu_resources, &handle->work);
 	spin_unlock_irq(&handle->lock);
 }
 EXPORT_SYMBOL(ipu_pm_callback);
@@ -781,7 +796,6 @@ void ipu_pm_notify_callback(u16 proc_id, u16 line_id, u32 event_id,
 			 * Remote proc to Host proc
 			 */
 			pr_debug("Remote Proc is ready to hibernate\n");
-
 			retval = ipu_pm_save_ctx(proc_id);
 			if (retval)
 				pr_err("Unable to stop proc %d\n", proc_id);
@@ -799,7 +813,6 @@ void ipu_pm_notify_callback(u16 proc_id, u16 line_id, u32 event_id,
 		handle->pm_event[event].pm_msg = payload;
 		up(&handle->pm_event[event].sem_handle);
 	}
-
 	return;
 error:
 	pr_err("Unknow event received from remote proc: %d\n", event);
@@ -987,7 +1000,7 @@ static inline int ipu_pm_get_i2c_bus(struct ipu_pm_object *handle,
 {
 	struct clk *p_i2c_clk;
 	int i2c_clk_status;
-	char i2c_name[I2C_NAME_SIZE];
+	char i2c_name[NAME_SIZE];
 	int pm_i2c_bus_num;
 
 	pm_i2c_bus_num = rcb_p->fill9;
@@ -1092,6 +1105,15 @@ static inline int ipu_pm_get_regulator(struct ipu_pm_object *handle,
 		goto error;
 	}
 
+	/* enable regulator */
+	retval = regulator_enable(p_regulator);
+	if (retval) {
+		pr_err("%s %d Error enabling %s ldo\n", __func__
+							 , __LINE__
+							 , regulator_name);
+		goto error;
+	}
+
 	/* Get and store the regulator default voltage */
 	cam2_prev_volt = regulator_get_voltage(p_regulator);
 
@@ -1123,90 +1145,132 @@ static inline int ipu_pm_get_aux_clk(struct ipu_pm_object *handle,
 				     struct rcb_block *rcb_p,
 				     struct ipu_pm_params *params)
 {
-	u32 a_clk = 0;
 	int ret;
-	int pm_aux_clk_num;
+	int aux_clk_num;
+	int parent_clk_rate;
+	int clk_rate;
+	int clk_src;
+	char clk_name[NAME_SIZE];
+	char src_clk_name[NAME_SIZE];
+	struct clk *aux_clk;
+	struct clk *aux_clk_src;
+	struct clk *aux_clk_src_parent;
 
-	pm_aux_clk_num = rcb_p->fill9;
+	aux_clk_num = rcb_p->fill9;
+	/* Rate should be provided in Mhz */
+	/* FIXME: The following values should be provided by requester */
+	parent_clk_rate = 192;
+	clk_rate = 24;
+	clk_src = 0x2;
 
-	if (WARN_ON((pm_aux_clk_num < AUX_CLK_MIN) ||
-			(pm_aux_clk_num > AUX_CLK_MAX))) {
-		pr_err("%s %d Invalid aux_clk %d\n", __func__, __LINE__
-						   , pm_aux_clk_num);
+	if ((aux_clk_num < AUX_CLK_MIN) || (aux_clk_num > AUX_CLK_MAX)) {
+		pr_err("Invalid aux_clk %d\n", aux_clk_num);
 		return PM_INVAL_AUX_CLK;
 	}
 
-	if (AUX_CLK_USE_MASK & (1 << pm_aux_clk_num)) {
-		struct clk *aux_clk;
-		struct clk *aux_clk_src_ptr;
+	if ((clk_src < SRC_CLK_MIN) || (clk_src > SRC_CLK_MAX)) {
+		pr_err("Invalid source for aux_clk %d\n", aux_clk_num);
+		return PM_INVAL_AUX_CLK;
+	}
 
-		aux_clk = clk_get(NULL, aux_clk_name[pm_aux_clk_num]);
+	if (AUX_CLK_USE_MASK & (1 << aux_clk_num)) {
+		pr_debug("Requesting aux_clk_%d [0x%x] [0x%x]\n", aux_clk_num,
+				__raw_readl(AUX_CLK_REG(aux_clk_num)),
+				__raw_readl(AUX_CLK_REG_REQ(aux_clk_num)));
+
+		/* building the name for aux_clk */
+		sprintf(clk_name, "auxclk%d_ck", aux_clk_num);
+		aux_clk = clk_get(NULL, clk_name);
 		if (!aux_clk) {
-			pr_err("%s %d Unable to get %s\n", __func__, __LINE__
-						, aux_clk_name[pm_aux_clk_num]);
+			pr_err("Unable to get %s\n", clk_name);
 			return PM_NO_AUX_CLK;
 		}
 		if (unlikely(aux_clk->usecount != 0)) {
-			pr_err("%s %d aux_clk%d->usecount = %d, expected to "
-				"be zero as there should be no other users\n",
-				__func__, __LINE__, pm_aux_clk_num,
-				aux_clk->usecount);
+			pr_err("aux_clk%d->usecount = %d, expected to "
+			       "be zero as there should be no other users\n",
+			       aux_clk_num, aux_clk->usecount);
 		}
 
-		aux_clk_src_ptr = clk_get(NULL,
-			aux_clk_source_name[PER_DPLL_CLK]);
-		if (!aux_clk_src_ptr) {
-			pr_err("%s %d Unable to get aux_clk source %s\n"
-							, __func__, __LINE__
-					, aux_clk_source_name[PER_DPLL_CLK]);
-			return PM_NO_AUX_CLK;
+		/* building the name for aux_clk_src */
+		sprintf(src_clk_name, "auxclk%d_src_ck", aux_clk_num);
+		aux_clk_src = clk_get(NULL, src_clk_name);
+		if (!aux_clk_src) {
+			pr_err("Unable to get %s\n", src_clk_name);
+			goto error_aux;
 		}
-		ret = clk_set_parent(aux_clk, aux_clk_src_ptr);
+
+		aux_clk_src_parent = clk_get(NULL, clk_src_name[clk_src]);
+		if (!aux_clk_src_parent) {
+			pr_err("Unable to get aux_clk source %s\n",
+							clk_src_name[clk_src]);
+			goto error_aux_src;
+		}
+
+		/* Rate must be provided in Mhz */
+		ret = clk_set_rate(aux_clk_src_parent,
+						(parent_clk_rate * 1000000));
 		if (ret) {
-			pr_err("%s %d Unable to set clk %s"
-				" as parent of aux_clk %s\n"
-				, __func__, __LINE__
-				, aux_clk_source_name[PER_DPLL_CLK]
-				, aux_clk_name[pm_aux_clk_num]);
-			return PM_NO_AUX_CLK;
+			pr_err("Rate not supported by aux_clk_src_parent %s\n",
+							clk_src_name[clk_src]);
+			goto error_aux_src_parent;
 		}
 
-		/* update divisor manually until API available */
-		a_clk = __raw_readl(AUX_CLK_REG(pm_aux_clk_num));
-		MASK_CLEAR_FIELD(a_clk, AUX_CLK_CLKDIV);
-		MASK_SET_FIELD(a_clk, AUX_CLK_CLKDIV, 0xA);
+		ret = clk_set_parent(aux_clk_src, aux_clk_src_parent);
+		if (ret) {
+			pr_err("Unable to set clk %s as parent of aux_clk %s\n",
+				clk_src_name[clk_src],
+				src_clk_name);
+			goto error_aux_src_parent;
+		}
 
-		/* Enable and configure aux clock */
-		__raw_writel(a_clk, AUX_CLK_REG(pm_aux_clk_num));
+		ret = clk_enable(aux_clk_src);
+		if (ret) {
+			pr_err("Error enabling aux_clk_src %s\n", src_clk_name);
+			goto error_aux_src_parent;
+		}
+
+		/* Rate must be provided in Mhz */
+		ret = clk_set_rate(aux_clk, (clk_rate * 1000000));
+		if (ret) {
+			pr_err("Rate not supported by %s\n", clk_name);
+			goto error_aux_src_parent;
+		}
 
 		ret = clk_enable(aux_clk);
 		if (ret) {
-			pr_err("%s %d Unable to enable aux_clk %s\n"
-							, __func__, __LINE__
-						, aux_clk_name[pm_aux_clk_num]);
-			return PM_NO_AUX_CLK;
+			pr_err("Error enabling %s\n", clk_name);
+			goto error_aux_src_parent;
 		}
 
-		aux_clk_ptr[pm_aux_clk_num] = aux_clk;
+		/* Save clk's to be able to release them */
+		aux_clk_p[aux_clk_num].aux_clk = aux_clk;
+		aux_clk_p[aux_clk_num].aux_clk_src = aux_clk_src;
+		aux_clk_p[aux_clk_num].aux_clk_src_parent = aux_clk_src_parent;
 
 		/* Clear the bit in the usage mask */
-		AUX_CLK_USE_MASK &= ~(1 << pm_aux_clk_num);
+		AUX_CLK_USE_MASK &= ~(1 << aux_clk_num);
 
-		pr_debug("Providing aux_clk_%d [0x%x] [0x%x]\n", pm_aux_clk_num,
-				__raw_readl(AUX_CLK_REG(pm_aux_clk_num)),
-				__raw_readl(AUX_CLK_REG_REQ(pm_aux_clk_num)));
+		pr_debug("Providing aux_clk_%d [0x%x] [0x%x]\n", aux_clk_num,
+				__raw_readl(AUX_CLK_REG(aux_clk_num)),
+				__raw_readl(AUX_CLK_REG_REQ(aux_clk_num)));
 
 		/* Store the aux clk addres in the RCB */
 		rcb_p->mod_base_addr =
-				(unsigned __force)AUX_CLK_REG(pm_aux_clk_num);
+				(unsigned __force)AUX_CLK_REG(aux_clk_num);
 		params->pm_aux_clk_counter++;
 	} else {
-		pr_err("%s %d Error providing aux_clk %d\n", __func__, __LINE__
-							   , pm_aux_clk_num);
+		pr_err("Error providing aux_clk %d\n", aux_clk_num);
 		return PM_NO_AUX_CLK;
 	}
 
 	return PM_SUCCESS;
+error_aux_src_parent:
+	clk_put(aux_clk_src_parent);
+error_aux_src:
+	clk_put(aux_clk_src);
+error_aux:
+	clk_put(aux_clk);
+	return PM_NO_AUX_CLK;
 }
 
 /*
@@ -1449,11 +1513,6 @@ static inline int ipu_pm_get_iss(struct ipu_pm_object *handle,
 		return PM_UNSUPPORTED;
 	}
 
-#if TMP_AUX_CLK_HACK
-	rcb_p->fill9 = AUX_CLK_MIN;
-	ipu_pm_get_aux_clk(handle, rcb_p, params);
-#endif
-
 	retval = ipu_pm_module_start(rcb_p->sub_type);
 	if (retval) {
 		pr_err("%s %d Error requesting ISS\n", __func__, __LINE__);
@@ -1639,6 +1698,13 @@ static inline int ipu_pm_rel_regulator(struct ipu_pm_object *handle,
 		return PM_INVAL_REGULATOR;
 	}
 
+	/* disable LDO */
+	retval = regulator_disable(p_regulator);
+	if (retval) {
+		pr_err("%s %d Error disabling ldo\n", __func__, __LINE__);
+		return PM_INVAL_REGULATOR;
+	}
+
 	/* Release resource using PRCM API */
 	regulator_put(p_regulator);
 
@@ -1658,33 +1724,58 @@ static inline int ipu_pm_rel_aux_clk(struct ipu_pm_object *handle,
 				     struct ipu_pm_params *params)
 {
 	struct clk *aux_clk;
-	int pm_aux_clk_num;
+	struct clk *aux_clk_src;
+	struct clk *aux_clk_src_parent;
+	char clk_name[NAME_SIZE];
+	char src_clk_name[NAME_SIZE];
+	int aux_clk_num;
 
-	pm_aux_clk_num = rcb_p->fill9;
+	aux_clk_num = rcb_p->fill9;
+
+	/* building the name for aux_clk */
+	sprintf(clk_name, "auxclk%d_ck", aux_clk_num);
+	/* building the name for aux_clk_src */
+	sprintf(src_clk_name, "auxclk%d_src_ck", aux_clk_num);
 
 	/* Check the usage mask */
-	if (AUX_CLK_USE_MASK & (1 << pm_aux_clk_num)) {
+	if (AUX_CLK_USE_MASK & (1 << aux_clk_num)) {
 		pr_err("%s %d Invalid aux_clk_%d\n", __func__, __LINE__
-						   , pm_aux_clk_num);
+						   , aux_clk_num);
 		return PM_INVAL_AUX_CLK;
 	}
 
-	aux_clk = aux_clk_ptr[pm_aux_clk_num];
+	aux_clk = aux_clk_p[aux_clk_num].aux_clk;
 	if (!aux_clk) {
-		pr_err("%s %d Null aux_clk %s\n", __func__, __LINE__
-						, aux_clk_name[pm_aux_clk_num]);
+		pr_err("Null %s\n", clk_name);
 		return PM_INVAL_AUX_CLK;
 	}
 	clk_disable(aux_clk);
+	clk_put(aux_clk);
+	aux_clk_p[aux_clk_num].aux_clk = 0;
 
-	aux_clk_ptr[pm_aux_clk_num] = 0;
+	aux_clk_src = aux_clk_p[aux_clk_num].aux_clk_src;
+	if (!aux_clk_src) {
+		pr_err("Null %s\n", src_clk_name);
+		return PM_INVAL_AUX_CLK;
+	}
+	clk_disable(aux_clk_src);
+	clk_put(aux_clk_src);
+	aux_clk_p[aux_clk_num].aux_clk_src = 0;
+
+	aux_clk_src_parent = aux_clk_p[aux_clk_num].aux_clk_src_parent;
+	if (!aux_clk_src_parent) {
+		pr_err("Null parent for %s\n", src_clk_name);
+		return PM_INVAL_AUX_CLK;
+	}
+	clk_put(aux_clk_src_parent);
+	aux_clk_p[aux_clk_num].aux_clk_src_parent = 0;
 
 	/* Set the usage mask for reuse */
-	AUX_CLK_USE_MASK |= (1 << pm_aux_clk_num);
+	AUX_CLK_USE_MASK |= (1 << aux_clk_num);
 
 	rcb_p->mod_base_addr = 0;
 	params->pm_aux_clk_counter--;
-	pr_debug("Releasing aux_clk_%d\n", pm_aux_clk_num);
+	pr_debug("Releasing aux_clk_%d\n", aux_clk_num);
 
 	return PM_SUCCESS;
 }
@@ -1953,11 +2044,6 @@ static inline int ipu_pm_rel_iss(struct ipu_pm_object *handle,
 		pr_err("%s %d ISS not requested\n", __func__, __LINE__);
 		goto error;
 	}
-
-#if TMP_AUX_CLK_HACK
-	rcb_p->fill9 = AUX_CLK_MIN;
-	ipu_pm_rel_aux_clk(handle, rcb_p, params);
-#endif
 
 	retval = ipu_pm_module_stop(rcb_p->sub_type);
 	if (retval) {
@@ -2464,10 +2550,15 @@ int ipu_pm_save_ctx(int proc_id)
 	unsigned long timeout;
 	struct ipu_pm_object *handle;
 
+	mutex_lock(ipu_pm_state.gate_handle);
+	/* Currently in recover, dont need to save */
+	if (recover)
+		goto exit;
+
 	/* get the handle to proper ipu pm object */
 	handle = ipu_pm_get_handle(proc_id);
 	if (unlikely(handle == NULL))
-		return 0;
+		goto exit;
 
 	/* get M3's load flag */
 	sys_loaded = (ipu_pm_get_state(proc_id) & SYS_PROC_LOADED) >>
@@ -2475,27 +2566,19 @@ int ipu_pm_save_ctx(int proc_id)
 	app_loaded = (ipu_pm_get_state(proc_id) & APP_PROC_LOADED) >>
 								PROC_LD_SHIFT;
 
-	/* If already down don't kill it twice */
-	if (ipu_pm_get_state(proc_id) & SYS_PROC_DOWN) {
-		pr_warn("ipu already hibernated, no need to save again");
-		return 0;
-	}
-
-#ifdef CONFIG_OMAP_PM
-	retval = omap_pm_set_max_sdma_lat(&pm_qos_handle_2,
-						IPU_PM_NO_MPU_LAT_CONSTRAINT);
-	if (retval)
-		pr_info("Unable to remove cstr on IPU\n");
-#endif
-
 	/* Because of the current scheme, we need to check
 	 * if APPM3 is enable and we need to shut it down too
 	 * Sysm3 is the only want sending the hibernate message
 	*/
-	mutex_lock(ipu_pm_state.gate_handle);
 	if (proc_id == SYS_M3 || proc_id == APP_M3) {
 		if (!sys_loaded)
 			goto exit;
+
+		/* If already down don't kill it twice */
+		if (ipu_pm_get_state(proc_id) & SYS_PROC_DOWN) {
+			pr_warn("ipu already hibernated\n");
+			goto exit;
+		}
 
 		num_loaded_cores = app_loaded + sys_loaded;
 
@@ -2521,20 +2604,18 @@ int ipu_pm_save_ctx(int proc_id)
 		if (app_loaded) {
 			pr_info("Sleep APPM3\n");
 			retval = rproc_sleep(app_rproc);
-			cm_write_mod_reg(HW_AUTO,
-					 OMAP4430_CM2_CORE_MOD,
-					 OMAP4_CM_DUCATI_CLKSTCTRL_OFFSET);
 			if (retval)
 				goto error;
+			cm_write_mod_reg(HW_AUTO, OMAP4430_CM2_CORE_MOD,
+					 OMAP4_CM_DUCATI_CLKSTCTRL_OFFSET);
 			handle->rcb_table->state_flag |= APP_PROC_DOWN;
 		}
 		pr_info("Sleep SYSM3\n");
 		retval = rproc_sleep(sys_rproc);
-		cm_write_mod_reg(HW_AUTO,
-				 OMAP4430_CM2_CORE_MOD,
-				 OMAP4_CM_DUCATI_CLKSTCTRL_OFFSET);
 		if (retval)
 			goto error;
+		cm_write_mod_reg(HW_AUTO, OMAP4430_CM2_CORE_MOD,
+				 OMAP4_CM_DUCATI_CLKSTCTRL_OFFSET);
 		handle->rcb_table->state_flag |= SYS_PROC_DOWN;
 
 		/* If there is a message in the mbox restore
@@ -2555,6 +2636,12 @@ int ipu_pm_save_ctx(int proc_id)
 			pr_err("Not able to save iommu");
 	} else
 		goto error;
+#ifdef CONFIG_OMAP_PM
+	retval = omap_pm_set_max_sdma_lat(&pm_qos_handle_2,
+						IPU_PM_NO_MPU_LAT_CONSTRAINT);
+	if (retval)
+		pr_info("Unable to remove cstr on IPU\n");
+#endif
 exit:
 	mutex_unlock(ipu_pm_state.gate_handle);
 	return 0;
@@ -2562,8 +2649,8 @@ error:
 #ifdef CONFIG_SYSLINK_IPU_SELF_HIBERNATION
 	ipu_pm_timer_state(PM_HIB_TIMER_ON);
 #endif
-	mutex_unlock(ipu_pm_state.gate_handle);
 	pr_debug("Aborting hibernation process\n");
+	mutex_unlock(ipu_pm_state.gate_handle);
 	return -EINVAL;
 restore:
 	pr_debug("Starting restore_ctx since messages pending in mbox\n");
@@ -2582,33 +2669,39 @@ int ipu_pm_restore_ctx(int proc_id)
 	int sys_loaded;
 	int app_loaded;
 	struct ipu_pm_object *handle;
+	struct ipu_pm_params *params;
 
 	/*If feature not supported by proc, return*/
 	if (!proc_supported(proc_id))
 		return 0;
 
-	/* get the handle to proper ipu pm object */
-	handle = ipu_pm_get_handle(proc_id);
-
+	/* get the handle to proper ipu pm object
+	 * currently sys_m3 is the one handling hib
+	 */
+	handle = ipu_pm_get_handle(SYS_M3);
 	if (WARN_ON(unlikely(handle == NULL)))
 		return -EINVAL;
 
-	/* FIXME: This needs mor analysis.
+	params = handle->params;
+	if (WARN_ON(unlikely(params == NULL)))
+		return -EINVAL;
+
+	/* FIXME: This needs more analysis.
 	 * Since the sync of IPU and MPU is done this is a safe place
 	 * to switch to HW_AUTO to allow transition of clocks to gated
 	 * supervised by HW.
-	*/
+	 */
 	if (first_time) {
 		/* Enable/disable ipu hibernation*/
 #ifdef CONFIG_SYSLINK_IPU_SELF_HIBERNATION
-		handle->rcb_table->pm_flags.hibernateAllowed = 1;
+		handle->rcb_table->pm_flags.hibernate_allowed = 1;
 		/* turn on ducati hibernation timer */
 		ipu_pm_timer_state(PM_HIB_TIMER_ON);
 #else
-		handle->rcb_table->pm_flags.hibernateAllowed = 0;
+		handle->rcb_table->pm_flags.hibernate_allowed = 0;
 #endif
 		pr_debug("hibernateAllowed=%d\n",
-				handle->rcb_table->pm_flags.hibernateAllowed);
+				handle->rcb_table->pm_flags.hibernate_allowed);
 		first_time = 0;
 		cm_write_mod_reg(HW_AUTO,
 				 OMAP4430_CM2_CORE_MOD,
@@ -2646,30 +2739,24 @@ int ipu_pm_restore_ctx(int proc_id)
 			iommu_restore_ctx(ducati_iommu);
 			_is_iommu_up = 1;
 		} else
-			pr_err("Not able to restore iommu");
+			pr_err("Not restoring iommu");
 
 		pr_info("Wakeup SYSM3\n");
 		retval = rproc_wakeup(sys_rproc);
-		cm_write_mod_reg(HW_AUTO,
-				 OMAP4430_CM2_CORE_MOD,
-				 OMAP4_CM_DUCATI_CLKSTCTRL_OFFSET);
 		if (retval)
 			goto error;
+		cm_write_mod_reg(HW_AUTO, OMAP4430_CM2_CORE_MOD,
+				 OMAP4_CM_DUCATI_CLKSTCTRL_OFFSET);
 		handle->rcb_table->state_flag &= ~SYS_PROC_DOWN;
 		if (ipu_pm_get_state(proc_id) & APP_PROC_LOADED) {
 			pr_info("Wakeup APPM3\n");
 			retval = rproc_wakeup(app_rproc);
-			cm_write_mod_reg(HW_AUTO,
-				 OMAP4430_CM2_CORE_MOD,
-				 OMAP4_CM_DUCATI_CLKSTCTRL_OFFSET);
 			if (retval)
 				goto error;
+			cm_write_mod_reg(HW_AUTO, OMAP4430_CM2_CORE_MOD,
+					 OMAP4_CM_DUCATI_CLKSTCTRL_OFFSET);
 			handle->rcb_table->state_flag &= ~APP_PROC_DOWN;
 		}
-#ifdef CONFIG_SYSLINK_IPU_SELF_HIBERNATION
-		/* turn on ducati hibernation timer */
-		ipu_pm_timer_state(PM_HIB_TIMER_ON);
-#endif
 #ifdef CONFIG_OMAP_PM
 		retval = omap_pm_set_max_sdma_lat(&pm_qos_handle_2,
 						IPU_PM_MM_MPU_LAT_CONSTRAINT);
@@ -2679,6 +2766,12 @@ int ipu_pm_restore_ctx(int proc_id)
 	} else
 		goto error;
 exit:
+#ifdef CONFIG_SYSLINK_IPU_SELF_HIBERNATION
+	/* turn on ducati hibernation timer */
+	if ((params->hib_timer_state == PM_HIB_TIMER_OFF) &&
+		global_rcb->pm_flags.hibernate_allowed)
+		ipu_pm_timer_state(PM_HIB_TIMER_ON);
+#endif
 	mutex_unlock(ipu_pm_state.gate_handle);
 	return retval;
 error:
@@ -2768,6 +2861,7 @@ int ipu_pm_setup(struct ipu_pm_config *cfg)
 	ducati_mbox = NULL;
 	sys_rproc = NULL;
 	app_rproc = NULL;
+	recover = 0;
 
 	memcpy(&ipu_pm_state.cfg, cfg, sizeof(struct ipu_pm_config));
 	ipu_pm_state.is_setup = true;
@@ -2794,6 +2888,15 @@ int ipu_pm_setup(struct ipu_pm_config *cfg)
 		iounmap(sysm3Idle);
 		goto exit;
 	}
+
+	/* Create aux_clk struct for managing req/rel */
+	aux_clk_p = kmalloc(sizeof(struct ipu_pm_aux_clks) * NUM_AUX_CLK,
+								GFP_KERNEL);
+	if (aux_clk_p == NULL) {
+		retval = -ENOMEM;
+		goto exit;
+	}
+
 #ifdef SR_WA
 	issHandle = ioremap(0x52000000, (sizeof(void) * 1));
 	fdifHandle = ioremap(0x4A10A000, (sizeof(void) * 1));
@@ -2897,6 +3000,9 @@ int ipu_pm_attach(u16 remote_proc_id, void *shared_addr)
 		}
 	}
 
+	if (recover)
+		recover--;
+
 	return retval;
 exit:
 	pr_err("ipu_pm_attach failed! retval = 0x%x", retval);
@@ -2987,13 +3093,6 @@ int ipu_pm_detach(u16 remote_proc_id)
 			/*
 			 * Restore iommu to allow process's iommu cleanup
 			 * after ipu_pm is shutdown
-			 */
-			if (ipu_pm_get_state(SYS_M3) & SYS_PROC_DOWN)
-				iommu_restore_ctx(ducati_iommu);
-			iommu_unregister_notifier(ducati_iommu,
-					&ipu_pm_notify_nb_iommu_ducati);
-			pr_debug("releasing ducati_iommu\n");
-			/*
 			 * FIXME: this need to be checked by the iommu driver
 			 * restore IOMMU since it is required the IOMMU
 			 * is up and running for reclaiming MMU entries
@@ -3002,6 +3101,9 @@ int ipu_pm_detach(u16 remote_proc_id)
 				iommu_restore_ctx(ducati_iommu);
 				_is_iommu_up = 1;
 			}
+			iommu_unregister_notifier(ducati_iommu,
+					&ipu_pm_notify_nb_iommu_ducati);
+			pr_debug("%s ducati_iommu put\n", __func__);
 			iommu_put(ducati_iommu);
 			ducati_iommu = NULL;
 		}
@@ -3013,8 +3115,6 @@ int ipu_pm_detach(u16 remote_proc_id)
 		}
 		/* Reset the state_flag */
 		handle->rcb_table->state_flag = 0;
-		if (recover)
-			recover = false;
 		global_rcb = NULL;
 		first_time = 1;
 	}
@@ -3082,6 +3182,9 @@ int ipu_pm_destroy(void)
 	appm3Idle = NULL;
 	global_rcb = NULL;
 
+	/* Free aux_clk struct for managing req/rel */
+	kfree(aux_clk_p);
+
 	return retval;
 exit:
 	if (retval < 0)
@@ -3133,21 +3236,21 @@ static int ipu_pm_timer_state(int event)
 	case PM_HIB_TIMER_EXPIRE:
 		if (params->hib_timer_state == PM_HIB_TIMER_ON) {
 			pr_debug("Starting hibernation, waking up M3 cores");
-			handle->rcb_table->state_flag |= (SYS_PROC_HIB |
-					APP_PROC_HIB | ENABLE_IPU_HIB);
+			handle->rcb_table->state_flag |= ENABLE_SELF_HIB;
+			handle->rcb_table->hib_flag = START_HIB_FLAG;
 #ifdef CONFIG_DUCATI_WATCH_DOG
-			if (sys_rproc->dmtimer != NULL)
-				omap_dm_timer_set_load(sys_rproc->dmtimer, 1,
-						params->wdt_time);
-			params->hib_timer_state = PM_HIB_TIMER_WDRESET;
-		} else if (params->hib_timer_state ==
-			PM_HIB_TIMER_WDRESET) {
+			if (global_rcb->pm_flags.wdt_allowed) {
+				if (sys_rproc->dmtimer != NULL)
+					omap_dm_timer_set_load(
+							sys_rproc->dmtimer, 1,
+							params->wdt_time);
+				params->hib_timer_state = PM_HIB_TIMER_WDRESET;
+			}
+		} else if (params->hib_timer_state == PM_HIB_TIMER_WDRESET) {
 			/* notify devh to begin error recovery here */
 			pr_debug("Timer ISR: Trigger WD reset + recovery\n");
+			wd_error = true;
 			ipu_pm_recover_schedule();
-			ipu_pm_notify_event(0, NULL);
-			if (sys_rproc->dmtimer != NULL)
-				omap_dm_timer_stop(sys_rproc->dmtimer);
 			params->hib_timer_state = PM_HIB_TIMER_OFF;
 #endif
 		}
@@ -3166,6 +3269,14 @@ static int ipu_pm_timer_state(int event)
 		params->hib_timer_state = PM_HIB_TIMER_OFF;
 		break;
 	case PM_HIB_TIMER_ON: /* enable timer */
+		/* If hibernation flag is disabled never start the HIB/WDT timer
+		 * this can be used to turn off in runtime this feature without
+		 * having to rebuild the kernel.
+		 * Very useful when debugging IPU.
+		 */
+		if (!global_rcb->pm_flags.hibernate_allowed)
+			break;
+
 		if (params->hib_timer_state == PM_HIB_TIMER_RESET) {
 			tick_rate = clk_get_rate(omap_dm_timer_get_fclk(
 					sys_rproc->dmtimer));
@@ -3180,6 +3291,10 @@ static int ipu_pm_timer_state(int event)
 					(void *)sys_rproc->dmtimer);
 			if (retval < 0)
 				pr_warn("request_irq status: %x\n", retval);
+#ifdef CONFIG_DUCATI_WATCH_DOG
+			/* Enable Watchdog */
+			global_rcb->pm_flags.wdt_allowed = 1;
+#endif
 			/*
 			 * store the dmtimer handle locally to use during
 			 * free_irq as dev_id token in cases where the remote

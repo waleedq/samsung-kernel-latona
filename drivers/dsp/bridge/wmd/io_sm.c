@@ -1018,7 +1018,6 @@ func_end:
  *      Calls the WMD's CHNL_ISR to determine if this interrupt is ours, then
  *      schedules a DPC to dispatch I/O.
  */
-//void io_mbox_msg(u32 msg)
 int io_mbox_msg(struct notifier_block *self, unsigned long len, void *msg)
 {
 	struct io_mgr *io_mgr;
@@ -1029,9 +1028,9 @@ int io_mbox_msg(struct notifier_block *self, unsigned long len, void *msg)
 	dev_get_io_mgr(dev_obj, &io_mgr);
 
 	if (!io_mgr)
-		return  NOTIFY_BAD;
+		return NOTIFY_BAD;
 
-	io_mgr->intr_val = (u16) ((u32)msg);/*msg;*/
+	io_mgr->intr_val = (u16)((u32)msg);
 	dev_dbg(bridge, "MBX: %s message %x\n", __func__, io_mgr->intr_val);
 	if (io_mgr->intr_val & MBX_PM_CLASS)
 		io_dispatch_pm(io_mgr);
@@ -1044,7 +1043,7 @@ int io_mbox_msg(struct notifier_block *self, unsigned long len, void *msg)
 		spin_unlock_irqrestore(&io_mgr->dpc_lock, flags);
 		tasklet_schedule(&io_mgr->dpc_tasklet);
 	}
-	return  NOTIFY_OK;
+	return NOTIFY_OK;
 }
 
 /*

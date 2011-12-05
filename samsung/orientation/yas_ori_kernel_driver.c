@@ -163,7 +163,7 @@ orientation_status_show(struct device *dev,
 	return sprintf(buf, "%d\n", status);
 }
 
-static DEVICE_ATTR(delay, S_IRUGO|S_IWUSR|S_IWGRP,
+static DEVICE_ATTR(poll_delay, S_IRUGO|S_IWUSR|S_IWGRP,
 			orientation_delay_show, orientation_delay_store);
 static DEVICE_ATTR(enable, S_IRUGO|S_IWUSR|S_IWGRP,
 			orientation_enable_show, orientation_enable_store);
@@ -173,7 +173,7 @@ static DEVICE_ATTR(data, S_IRUGO, orientation_data_show, NULL);
 static DEVICE_ATTR(status, S_IRUGO, orientation_status_show, NULL);
 
 static struct attribute *orientation_attributes[] = {
-	&dev_attr_delay.attr,
+	&dev_attr_poll_delay.attr,
 	&dev_attr_enable.attr,
 	&dev_attr_wake.attr,
 	&dev_attr_data.attr,

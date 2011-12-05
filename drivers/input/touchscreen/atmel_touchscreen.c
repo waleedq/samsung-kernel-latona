@@ -95,7 +95,11 @@ extern Atmel_model_type g_model;
 extern uint8_t cal_check_flag;//20100208
 extern unsigned int qt_time_point;
 extern unsigned int qt_timer_state ;
+extern int ta_state;
 //#define TEST_TOUCH_KEY_IN_ATMEL
+
+int fh_err_count;
+extern void set_frequency_hopping_table(int mode);
 
 extern int is_suspend_state; //to check suspend mode
 
@@ -247,21 +251,21 @@ extern ssize_t set_delta5_mode_show(struct device *dev, struct device_attribute 
 extern ssize_t set_delta6_mode_show(struct device *dev, struct device_attribute *attr, char *buf);
 extern ssize_t threshold_show(struct device *dev, struct device_attribute *attr, char *buf);
 
-static DEVICE_ATTR(set_refer0, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, set_refer0_mode_show, NULL);
-static DEVICE_ATTR(set_delta0, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, set_delta0_mode_show, NULL);
-static DEVICE_ATTR(set_refer1, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, set_refer1_mode_show, NULL);
-static DEVICE_ATTR(set_delta1, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, set_delta1_mode_show, NULL);
-static DEVICE_ATTR(set_refer2, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, set_refer2_mode_show, NULL);
-static DEVICE_ATTR(set_delta2, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, set_delta2_mode_show, NULL);
-static DEVICE_ATTR(set_refer3, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, set_refer3_mode_show, NULL);
-static DEVICE_ATTR(set_delta3, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, set_delta3_mode_show, NULL);
-static DEVICE_ATTR(set_refer4, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, set_refer4_mode_show, NULL);
-static DEVICE_ATTR(set_delta4, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, set_delta4_mode_show, NULL);
-static DEVICE_ATTR(set_refer5, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, set_refer5_mode_show, NULL);
-static DEVICE_ATTR(set_delta5, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, set_delta5_mode_show, NULL);
-static DEVICE_ATTR(set_refer6, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, set_refer6_mode_show, NULL);
-static DEVICE_ATTR(set_delta6, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, set_delta6_mode_show, NULL);
-static DEVICE_ATTR(set_threshold, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, threshold_show, NULL);
+static DEVICE_ATTR(set_refer0, S_IRUGO, set_refer0_mode_show, NULL);
+static DEVICE_ATTR(set_delta0, S_IRUGO, set_delta0_mode_show, NULL);
+static DEVICE_ATTR(set_refer1, S_IRUGO, set_refer1_mode_show, NULL);
+static DEVICE_ATTR(set_delta1, S_IRUGO, set_delta1_mode_show, NULL);
+static DEVICE_ATTR(set_refer2, S_IRUGO, set_refer2_mode_show, NULL);
+static DEVICE_ATTR(set_delta2, S_IRUGO, set_delta2_mode_show, NULL);
+static DEVICE_ATTR(set_refer3, S_IRUGO, set_refer3_mode_show, NULL);
+static DEVICE_ATTR(set_delta3, S_IRUGO, set_delta3_mode_show, NULL);
+static DEVICE_ATTR(set_refer4, S_IRUGO, set_refer4_mode_show, NULL);
+static DEVICE_ATTR(set_delta4, S_IRUGO, set_delta4_mode_show, NULL);
+static DEVICE_ATTR(set_refer5, S_IRUGO, set_refer5_mode_show, NULL);
+static DEVICE_ATTR(set_delta5, S_IRUGO, set_delta5_mode_show, NULL);
+static DEVICE_ATTR(set_refer6, S_IRUGO, set_refer6_mode_show, NULL);
+static DEVICE_ATTR(set_delta6, S_IRUGO, set_delta6_mode_show, NULL);
+static DEVICE_ATTR(set_threshold, S_IRUGO, threshold_show, NULL);
 #endif /* ENABLE_NOISE_TEST_MODE */
 
 void read_func_for_only_single_touch(struct work_struct *work);
@@ -286,7 +290,7 @@ void clear_touch_history(void);
 
 //samsung customisation
 static struct kobj_attribute touch_boost_attr =     __ATTR(touch_boost, 0644, ts_show, ts_store);
-static struct kobj_attribute firmware_attr =        __ATTR(set_qt_firm_update, 0222, NULL, firmware_update_store);
+static struct kobj_attribute firmware_attr =        __ATTR(set_qt_firm_update, 0220, NULL, firmware_update_store);
 static struct kobj_attribute firmware_binary_attr = __ATTR(set_qt_firm_version, 0444, firmware_version_show, NULL);
 static struct kobj_attribute firmware_binary_read_attr = __ATTR(set_qt_firm_version_read, 0444, firmware_version_read_show, NULL);
 static struct kobj_attribute firmware_ret_attr =    __ATTR(set_qt_firm_status, 0444, firmware_ret_show, NULL);
@@ -309,17 +313,17 @@ extern  ssize_t set_total_store(struct device *dev, struct device_attribute *att
 extern  ssize_t set_write_show(struct device *dev, struct device_attribute *attr, char *buf);
 extern  ssize_t set_write_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t size);
 
-static DEVICE_ATTR(set_power, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, set_power_show, set_power_store);
-static DEVICE_ATTR(set_acquisition, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, set_acquisition_show, set_acquisition_store);
-static DEVICE_ATTR(set_touchscreen, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, set_touchscreen_show, set_touchscreen_store);
-static DEVICE_ATTR(set_keyarray, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, set_keyarray_show, set_keyarray_store);
-static DEVICE_ATTR(set_grip , S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, set_grip_show, set_grip_store);
-static DEVICE_ATTR(set_noise, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, set_noise_show, set_noise_store);
-static DEVICE_ATTR(set_total, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, set_total_show, set_total_store);
-static DEVICE_ATTR(set_write, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, set_write_show, set_write_store);
+static DEVICE_ATTR(set_power, S_IRUGO | S_IWUSR, set_power_show, set_power_store);
+static DEVICE_ATTR(set_acquisition, S_IRUGO | S_IWUSR, set_acquisition_show, set_acquisition_store);
+static DEVICE_ATTR(set_touchscreen, S_IRUGO | S_IWUSR, set_touchscreen_show, set_touchscreen_store);
+static DEVICE_ATTR(set_keyarray, S_IRUGO | S_IWUSR, set_keyarray_show, set_keyarray_store);
+static DEVICE_ATTR(set_grip , S_IRUGO | S_IWUSR, set_grip_show, set_grip_store);
+static DEVICE_ATTR(set_noise, S_IRUGO | S_IWUSR, set_noise_show, set_noise_store);
+static DEVICE_ATTR(set_total, S_IRUGO | S_IWUSR, set_total_show, set_total_store);
+static DEVICE_ATTR(set_write, S_IRUGO | S_IWUSR, set_write_show, set_write_store);
 
 static ssize_t bootcomplete_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t n);
-static struct kobj_attribute bootcomplete_attr =        __ATTR(bootcomplete, 0222, NULL, bootcomplete_store);
+static struct kobj_attribute bootcomplete_attr =        __ATTR(bootcomplete, 0220, NULL, bootcomplete_store);
 
 extern void bootcomplete(void);
 extern void enable_autocal_timer(unsigned int value);
@@ -960,6 +964,18 @@ void read_func_for_only_single_touch(struct work_struct *work)
 	return;
 }
 
+void check_frequency_hopping_error(uint8_t *atmel_msg)
+{
+	if(ta_state) {
+		if(atmel_msg[1] & 0x8) {
+			if(++fh_err_count == 12) fh_err_count = 0;
+			if(!(fh_err_count % 3)) {
+				set_frequency_hopping_table(fh_err_count/3);
+			}
+		}
+	}
+}
+
 void read_func_for_multi_touch(struct work_struct *work)
 {
 	uint8_t object_type, instance;
@@ -999,12 +1015,13 @@ void read_func_for_multi_touch(struct work_struct *work)
 		case TOUCH_KEYARRAY_T15:
         handle_keyarray(atmel_msg);
 			break;
+		case PROCG_NOISESUPPRESSION_T22:
+			check_frequency_hopping_error(atmel_msg);
 		case SPT_GPIOPWM_T19:
 		case PROCI_ONETOUCHGESTUREPROCESSOR_T24:
 		case PROCI_TWOTOUCHGESTUREPROCESSOR_T27:
 		case SPT_SELFTEST_T25:
 		case SPT_CTECONFIG_T28:
-		case PROCG_NOISESUPPRESSION_T22:
 		default:
 			printk(KERN_DEBUG "[TSP] 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x\n", atmel_msg[0], atmel_msg[1],atmel_msg[2], 
 				    atmel_msg[3], atmel_msg[4],atmel_msg[5], atmel_msg[6], atmel_msg[7], atmel_msg[8]);
@@ -1134,6 +1151,7 @@ static int __init touchscreen_probe(struct platform_device *pdev)
         	input_set_abs_params(tsp.inputdevice, ABS_MT_POSITION_Y, 0, MAX_TOUCH_Y_RESOLUTION, 0, 0);
         	input_set_abs_params(tsp.inputdevice, ABS_MT_TOUCH_MAJOR, 0, 255, 0, 0);
         	input_set_abs_params(tsp.inputdevice, ABS_MT_WIDTH_MAJOR, 0, 30, 0, 0);
+        	input_set_abs_params(tsp.inputdevice, ABS_MT_TRACKING_ID, 0, MAX_TOUCH_NUM - 1, 0, 0);
         }
         break;
     }        

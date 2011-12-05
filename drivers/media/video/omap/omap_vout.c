@@ -39,6 +39,9 @@
 #include <linux/irq.h>
 #include <linux/videodev2.h>
 #include <linux/slab.h>
+//Change for OMAPS00243349
+#include <linux/wait.h>
+//Change for OMAPS00243349
 //Change for OMAPS00241246 
 #include <plat/clockdomain.h>
 //Change for OMAPS00241246 
@@ -47,14 +50,11 @@
 #else
 #include <media/videobuf-dma-contig.h>
 #endif
-//720 ISP Enable OMAPS00235346
-#ifdef CONFIG_OMAP3_ISP_RESIZER
+#ifdef CONFIG_OMAP3_ISP_RESIZER_ON_OVERLAY
 #include <mach/isp_user.h>
 #include <linux/ispdss.h>
 #include "../isp/ispresizer.h"
 #include <linux/omap_resizer.h>
-//720 ISP Enable OMAPS00235346
-
 #endif
 #include <media/v4l2-device.h>
 #include <media/v4l2-ioctl.h>
@@ -69,6 +69,14 @@
 #endif
 #include "omap_voutlib.h"
 #include "omap_voutdef.h"
+
+#define SKIP_FIRST_FRAME
+
+#ifdef SKIP_FIRST_FRAME
+#define DROP_FRAMES_COUNT 1
+int nDropCount = DROP_FRAMES_COUNT;
+int flg_720  = 0;
+#endif
 
 #ifdef CONFIG_TILER_OMAP
 #include <mach/tiler.h>
@@ -102,15 +110,11 @@ enum dma_channel_state {
 #ifdef CONFIG_ARCH_OMAP4
 #define VID_MAX_WIDTH		4096	/* Largest width */
 #define VID_MAX_HEIGHT		4096	/* Largest height */
-//Change for OMAPS00239513
 #define OMAP_VOUT_MAX_BUF_SIZE (VID_MAX_WIDTH*VID_MAX_HEIGHT*4)
-//Change for OMAPS00239513
 #else
 #define VID_MAX_WIDTH		1280	/* Largest width */
 #define VID_MAX_HEIGHT		720	/* Largest height */
-//Change for OMAPS00239513
 #define OMAP_VOUT_MAX_BUF_SIZE (VID_MAX_WIDTH*VID_MAX_HEIGHT*2)
-//Change for OMAPS00239513
 #endif
 /* Mimimum requirement is 2x2 for DSS */
 #define VID_MIN_WIDTH		2
@@ -120,28 +124,20 @@ enum dma_channel_state {
 #define MAX_PIXELS_PER_LINE     2048
 
 #define VRFB_TX_TIMEOUT         1000
-//Changes for OMAPS00235683
 #define VRFB_NUM_BUFS		OMAP_VOUT_MAX_BUFFERS
-//Changes for OMAPS00235683
-/* Max buffer size tobe allocated during init */
-//Change for OMAPS00239513
-//#define OMAP_VOUT_MAX_BUF_SIZE (VID_MAX_WIDTH*VID_MAX_HEIGHT*4)
-//Change for OMAPS00239513
 
 #define VDD2_OCP_FREQ_CONST     (cpu_is_omap34xx() ? \
 (cpu_is_omap3630() ? 200000 : 166000) : 0)
-//720 ISP Enable OMAPS00235346
-#ifdef CONFIG_OMAP3_ISP_RESIZER
+
+#ifdef CONFIG_OMAP3_ISP_RESIZER_ON_OVERLAY
 struct isp_node pipe;
 static int vrfb_configured;
 #endif
-//720 ISP Enable OMAPS00235346
+
 static struct videobuf_queue_ops video_vbq_ops;
 /* Variables configurable through module params*/
-//Changes for OMAPS00235683
 static u32 video1_numbuffers = OMAP_VOUT_MAX_BUFFERS;
 static u32 video2_numbuffers = OMAP_VOUT_MAX_BUFFERS;
-//Changes for OMAPS00235683
 static u32 video1_bufsize = OMAP_VOUT_MAX_BUF_SIZE;
 static u32 video2_bufsize = OMAP_VOUT_MAX_BUF_SIZE;
 static u32 video3_numbuffers = 3;
@@ -149,6 +145,10 @@ static u32 video3_bufsize = OMAP_VOUT_MAX_BUF_SIZE;
 static u32 vid1_static_vrfb_alloc;
 static u32 vid2_static_vrfb_alloc;
 static int debug;
+
+bool stream_on = false;      //   720p_playback_fix
+
+static int vidioc_streamoff(struct file *file, void *fh, enum v4l2_buf_type i);
 
 /* Module parameters */
 module_param(video1_numbuffers, uint, S_IRUGO);
@@ -185,6 +185,28 @@ MODULE_PARM_DESC(vid2_static_vrfb_alloc,
 module_param(debug, bool, S_IRUGO);
 MODULE_PARM_DESC(debug, "Debug level (0-1)");
 
+/* FIXME: backward compatibilities... */
+#if !defined(MODULE)
+static __init int setup_video1_numbuffers(char *opt)
+{
+	video1_numbuffers = (u32) simple_strtoul(opt, NULL, 10);
+	return 0;
+}
+
+__setup("omap_vout_mod.video1_numbuffers=", setup_video1_numbuffers);
+
+static __init int setup_vid1_static_vrfb_alloc(char *opt)
+{
+	if (*opt == 'y')
+		vid1_static_vrfb_alloc = true;
+	else
+		vid1_static_vrfb_alloc = false;
+		
+	return 0;
+}
+
+__setup("omap_vout_mod.vid1_static_vrfb_alloc=", setup_vid1_static_vrfb_alloc);
+#endif /* MODULE */
 
 enum omap_color_mode video_mode_to_dss_mode(
 		struct v4l2_pix_format *pix,
@@ -320,7 +342,8 @@ static int omap_vout_allocate_vrfb_buffers(struct omap_vout_device *vout,
 	return 0;
 }
 #endif
-#ifdef CONFIG_OMAP3_ISP_RESIZER
+
+#ifdef CONFIG_OMAP3_ISP_RESIZER_ON_OVERLAY
 /* This function wakes up the application once
  * the DMA transfer to VRFB space is completed by the
  * ISP resizer block
@@ -334,14 +357,90 @@ void omap_vout_isp_rsz_dma_tx_callback(void *arg)
 	wake_up_interruptible(&vout->vrfb_dma_tx.wait);
 }
 
-static bool need_isp_rsz(struct omap_vout_device *vout) {
-// Below change is to integrate the fix for OMAPS00228892. This change is delivered though OMAPS00236725.
-//	if (vout->pix.height * vout->pix.width == VID_MAX_WIDTH * 720)
-	if ((vout->pix.height == 720) || (vout->pix.width == 1280) || ((vout->pix.height * vout->pix.width) > (864 * 480)))
-		return true;
+static void __enable_isp_rsz(struct omap_vout_device *vout, int line)
+{
+	int src_w, src_h, dst_w, dst_h, scale;
 
-	return false;
+
+	if (vout->isprsz & ISPRSZ_ENABLE)
+		return;
+
+	if (vout->isprsz & ISPRSZ_MANUALMODE)
+		return;
+
+	/* Check for 720p format */
+
+	// Below change is to integrate the fix for OMAPS00228892. This change is delivered though OMAPS00236725.
+	if ((vout->pix.height == 720) || (vout->pix.width == 1280) || ((vout->pix.height * vout->pix.width) > (864 * 480)))
+	{
+		stream_on = 1;
+		printk(" stream_on %d\n",stream_on  );
+		goto enable_and_exit;
+	}
+
+
+	/* ISP resizer used for scaling 1/4x~1/8x and,
+	 * for width > 1024 and scaling 1/2x~1/8x
+	 */
+
+	/* Check for vertical scale */
+	src_h = vout->pix.height; //vout->crop->height
+	dst_h = vout->win.w.height;
+	scale = (1024 * src_h)/dst_h;
+	if (scale > 4096) {
+		goto enable_and_exit;
+	}
+
+	/* Check for horizontal scale */
+	src_w = vout->pix.width; //vout->crop->width
+	dst_w = vout->win.w.width;
+	scale = (1024 * src_w)/dst_w;
+	if ((scale > 4096 &&  src_w > 864)|| (scale > 2048 && src_w > 1024)) {
+		goto enable_and_exit;
+	}
+
+	return;
+
+enable_and_exit:
+	vout->isprsz |= ISPRSZ_ENABLE;
+	omap_vout_set_max_downscale(8);
+	printk(KERN_ERR "<%s> ISP resizer enabled from #%d\n",
+			__func__, line);
+
+	vout->isprsz &= ~ISPRSZ_CONFIGURED;
 }
+#define enable_isp_rsz(x) __enable_isp_rsz(x, __LINE__)
+
+static void __disable_isp_rsz(struct omap_vout_device *vout, int line)
+{
+//Change for OMAPS00244341
+	vrfb_configured = 0;
+//Change for OMAPS00244341
+	if (!(vout->isprsz & ISPRSZ_ENABLE))
+		return;
+
+	vout->isprsz &= ~ISPRSZ_ENABLE;
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+//Change for OMAPS00250361
+	omap_vout_set_max_downscale(2);
+//Change for OMAPS00250361
+#else
+	omap_vout_set_max_downscale(4);
+#endif
+	printk(KERN_INFO "<%s> ISP resizer disabled from #%d\n",
+			__func__, line);
+
+	if (vout->isprsz & ISPRSZ_CONFIGURED) {
+		ispdss_put_resource();
+		vout->isprsz &= ~ISPRSZ_CONFIGURED;
+		printk(KERN_ERR "<%s> ISP resizer released\n", __func__);
+	}
+
+//Change for OMAPS00244341
+	//vrfb_configured = 0;
+//Change for OMAPS00244341
+}
+#define disable_isp_rsz(x) __disable_isp_rsz(x, __LINE__)
 
 /* This function configures and initializes the ISP resizer*/
 static int init_isp_rsz(struct omap_vout_device *vout)
@@ -349,16 +448,12 @@ static int init_isp_rsz(struct omap_vout_device *vout)
 	int num_video_buffers = 0;
 	int ret = 0;
 
-	if (!vout->use_isp_rsz_for_downscale) {
-		if (need_isp_rsz(vout)) {
-			vout->use_isp_rsz_for_downscale = 1;
-		} else {
-			/* no need to use ISP resizer */
-			return 0;
-		}
+	if (!(vout->isprsz & ISPRSZ_ENABLE)) {
+		/* no need to use ISP resizer */
+		return 0;
 	}
 
-	if (vout->rsz_configured == 1) {
+	if (vout->isprsz & ISPRSZ_CONFIGURED) {
 		/* ISP resizer already configured */
 		return 0;
 	}
@@ -370,7 +465,7 @@ static int init_isp_rsz(struct omap_vout_device *vout)
 		printk(KERN_ERR "<%s>: <%s> failed to get ISP "
 				"resizer resource = %d\n",
 				__FILE__, __func__, ret);
-		vout->use_isp_rsz_for_downscale = 0;
+		vout->isprsz &= ~ISPRSZ_ENABLE;
 		return ret;
 	}
 
@@ -395,10 +490,15 @@ static int init_isp_rsz(struct omap_vout_device *vout)
 		printk(KERN_ERR "<%s> failed to configure "
 				"ISP_resizer = %d\n",
 				__func__, ret);
-		vout->use_isp_rsz_for_downscale = 0;
+		ispdss_put_resource();
+		vout->isprsz &= ~ISPRSZ_ENABLE;
 		return ret;
 	}
-	vout->rsz_configured = 1;
+	vout->isprsz |= ISPRSZ_CONFIGURED;
+	vrfb_configured = 0; //Changed by for green line in preview
+#ifdef SKIP_FIRST_FRAME
+	nDropCount = DROP_FRAMES_COUNT;
+#endif
 	printk(KERN_INFO "<%s> ISP resizer configured\n", __func__);
 
 	return ret;
@@ -563,7 +663,7 @@ static inline int rotate_90_or_270(const struct omap_vout_device *vout)
  */
 static inline int rotation_enabled(const struct omap_vout_device *vout)
 {
-	/* rotation needs to be enabled by default for OMAP3 in order
+	/* Rotation needs to be enabled by default for OMAP3 in order
 	 * to use VRFB. ISP resizer also requires VRFB to be used for all
 	 * rotation angles including 0 degree. for OMAP3 this function needs
 	 * to return true even for 0 degree rotation
@@ -701,9 +801,8 @@ static int omap_vout_vrfb_buffer_setup(struct omap_vout_device *vout,
 {
 	int i;
 	bool yuv_mode;
-//720 ISP Enable OMAPS00235346
 	s32 width, height;
-//720 ISP Enable OMAPS00235346
+
 	/* Allocate the VRFB buffers only if the buffers are not
 	 * allocated during init time.
 	 */
@@ -716,17 +815,13 @@ static int omap_vout_vrfb_buffer_setup(struct omap_vout_device *vout,
 		yuv_mode = true;
 	else
 		yuv_mode = false;
-//720 ISP Enable OMAPS00235346
-/* TODO: this is temporary disabling of vrfb to test V4L2: needs to be
- corrected for future
-*/
+
 	for (i = 0; i < *count; i++) {
-//720 ISP Enable OMAPS00235346
-#ifdef CONFIG_OMAP3_ISP_RESIZER
+#ifdef CONFIG_OMAP3_ISP_RESIZER_ON_OVERLAY
 		/* TODO: this is temporary disabling of vrfb to test V4L2: needs to be
 		 corrected for future
 		*/
-		if (vout->use_isp_rsz_for_downscale) {
+		if (vout->isprsz & ISPRSZ_ENABLE) {
 			width = vout->win.w.width;
 			height = vout->win.w.height;
 		} else {
@@ -743,7 +838,6 @@ static int omap_vout_vrfb_buffer_setup(struct omap_vout_device *vout,
 				vout->bpp, yuv_mode,
 				vout->rotation);
 	}
-//720 ISP Enable OMAPS00235346
 	return 0;
 }
 #else /* ifndef CONFIG_ARCH_OMAP4 */
@@ -931,14 +1025,13 @@ static int omap_vout_calculate_offset(struct omap_vout_device *vout, int idx)
 	int *cropped_uv_offset = vout->cropped_uv_offset + idx;
 	unsigned long addr = 0, uv_addr = 0;
 #endif
-//720 ISP Enable OMAPS00235346
-#ifdef CONFIG_OMAP3_ISP_RESIZER
-	if (vout->use_isp_rsz_for_downscale) {
+
+#ifdef CONFIG_OMAP3_ISP_RESIZER_ON_OVERLAY
+	if (vout->isprsz & ISPRSZ_ENABLE) {
 		struct v4l2_window *win = &(vout->win);
 		crop->height = win->w.height;
 		crop->width = win->w.width;
 	}
-//720 ISP Enable OMAPS00235346
 #endif
 
 	ovid = &vout->vid_info;
@@ -974,9 +1067,8 @@ static int omap_vout_calculate_offset(struct omap_vout_device *vout, int idx)
 
 	if (rotation_enabled(vout)) {
 		line_length = MAX_PIXELS_PER_LINE;
-//720 ISP Enable OMAPS00235346
-#ifdef CONFIG_OMAP3_ISP_RESIZER
-		if (vout->use_isp_rsz_for_downscale) {
+#ifdef CONFIG_OMAP3_ISP_RESIZER_ON_OVERLAY
+		if (vout->isprsz & ISPRSZ_ENABLE) {
 			ctop = crop->top;
 			cleft = crop->left;
 		} else {
@@ -987,7 +1079,6 @@ static int omap_vout_calculate_offset(struct omap_vout_device *vout, int idx)
 		ctop = (pix->height - crop->height) - crop->top;
 		cleft = (pix->width - crop->width) - crop->left;
 #endif
-//720 ISP Enable OMAPS00235346
 	} else {
 		line_length = pix->width;
 	}
@@ -1163,10 +1254,9 @@ int omapvid_setup_overlay(struct omap_vout_device *vout,
 	int ret = 0;
 	struct omap_overlay_info info;
 	int cropheight, cropwidth, pixheight, pixwidth;
-//720 ISP Enable OMAPS00235346
 	s32 tmp_cropwidth, tmp_cropheight, tmp_pixwidth, tmp_pixheight;
 
-//720 ISP Enable OMAPS00235346
+
 	if ((ovl->caps & OMAP_DSS_OVL_CAP_SCALE) == 0 &&
 			(outw != vout->pix.width || outh != vout->pix.height)) {
 		ret = -EINVAL;
@@ -1178,10 +1268,10 @@ int omapvid_setup_overlay(struct omap_vout_device *vout,
 		ret = -EINVAL;
 		goto setup_ovl_err;
 	}
-//720 ISP Enable OMAPS00235346
-#ifdef CONFIG_OMAP3_ISP_RESIZER
+
+#ifdef CONFIG_OMAP3_ISP_RESIZER_ON_OVERLAY
 	/* For 720p set the width and height for ISP resizer downscaling*/
-	if (vout->use_isp_rsz_for_downscale) {
+	if (vout->isprsz & ISPRSZ_ENABLE) {
 		tmp_cropwidth = vout->win.w.width;
 		tmp_cropheight = vout->win.w.height;
 		tmp_pixwidth = vout->win.w.width;
@@ -1199,11 +1289,10 @@ int omapvid_setup_overlay(struct omap_vout_device *vout,
 	tmp_pixwidth = vout->pix.width;
 	tmp_pixheight = vout->pix.height;
 #endif
-//720 ISP Enable OMAPS00235346
+
 	/* Setup the input plane parameters according to
 	 * rotation value selected.
 	 */
-//720 ISP Enable OMAPS00235346
 	if (rotate_90_or_270(vout)) {
 		cropheight = tmp_cropwidth;
 		cropwidth = tmp_cropheight;
@@ -1215,7 +1304,6 @@ int omapvid_setup_overlay(struct omap_vout_device *vout,
 		pixheight = tmp_pixheight;
 		pixwidth = tmp_pixwidth;
 	}
-//720 ISP Enable OMAPS00235346
 	ovl->get_overlay_info(ovl, &info);
 	if (addr)
 		info.paddr = addr;
@@ -1239,6 +1327,7 @@ int omapvid_setup_overlay(struct omap_vout_device *vout,
 	* This is required to meet DSS driver window requirements
 	*/
 	calc_overlay_window_params(vout, &info);
+
 	info.global_alpha =
 		vout->vid_info.overlays[0]->info.global_alpha;
 	if (!cpu_is_omap44xx()) {
@@ -1624,13 +1713,9 @@ static int omap_vout_buffer_setup(struct videobuf_queue *q, unsigned int *count,
 #ifndef CONFIG_ARCH_OMAP4
 	startindex = (vout->vid == OMAP_VIDEO1) ?
 		video1_numbuffers : video2_numbuffers;
-//Changes for OMAPS00235683
-//Changes for 6 buff based L25Inc4.3
-//#if 0
 	if (V4L2_MEMORY_MMAP == vout->memory && *count < startindex)
 		*count = startindex;
-//#endif
-//Changes for OMAPS00235683
+
 	if ((rotation_enabled(vout)) && *count > VRFB_NUM_BUFS)
 		*count = VRFB_NUM_BUFS;
 
@@ -1667,13 +1752,8 @@ static int omap_vout_buffer_setup(struct videobuf_queue *q, unsigned int *count,
 		vout->buf_virt_addr[i] = virt_addr;
 		vout->buf_phy_addr[i] = phy_addr;
 	}
-//Changes for OMAPS00235683
-//Changes for 6 buff based on L25Inc4.3
-//	if (startindex < *count)
-		*count = vout->buffer_allocated = i;
-//	else
-//		*count = vout->buffer_allocated = *count;
-//Changes for OMAPS00235683
+	*count = vout->buffer_allocated = i;
+
 #else
 
 	if (V4L2_MEMORY_MMAP != vout->memory)
@@ -1762,6 +1842,7 @@ static u32 omap_tiler_virt_to_phys(void *ptr)
 			}
 		}
 	}
+
 	return 0;
 }
 #endif
@@ -1817,13 +1898,11 @@ static int omap_vout_buffer_prepare(struct videobuf_queue *q,
 		/* Physical address */
 		dmabuf->bus_addr = (dma_addr_t) omap_vout_uservirt_to_phys(vb->baddr);
 	}
-//720 ISP Enable OMAPS00235346
+
 	rotation = calc_rotation(vout);
 
-	dmabuf = videobuf_to_dma(q->bufs[vb->i]);
-
-#ifdef CONFIG_OMAP3_ISP_RESIZER
-	if (vout->use_isp_rsz_for_downscale) {
+#ifdef CONFIG_OMAP3_ISP_RESIZER_ON_OVERLAY
+	if (vout->isprsz & ISPRSZ_ENABLE) {
 		int ret = 0;
 		/*Start resizing*/
 		ret = ispdss_begin(&pipe, vb->i, vb->i,
@@ -1861,7 +1940,9 @@ static int omap_vout_buffer_prepare(struct videobuf_queue *q,
 		return ret;
 	}
 #endif
-//720 ISP Enable OMAPS00235346
+
+	dmabuf = videobuf_to_dma(q->bufs[vb->i]);
+
 	if (!rotation_enabled(vout)) {
 		vout->queued_buf_addr[vb->i] = (u8 *) dmabuf->bus_addr;
 		return 0;
@@ -1896,14 +1977,13 @@ static int omap_vout_buffer_prepare(struct videobuf_queue *q,
 	/* src_port required only for OMAP1 */
 	omap_set_dma_src_params(tx->dma_ch, 0, OMAP_DMA_AMODE_POST_INC,
 			dmabuf->bus_addr, src_element_index, src_frame_index);
-//Patch for OMAPS00237522
-	/* enable src data packing */
-	omap_set_dma_src_data_pack(tx->dma_ch, 1);
-//Patch for OMAPS00237522	
+
+//Change for OMAPS00243349
+	//omap_set_dma_src_data_pack(tx->dma_ch, 1);
+//Change for OMAPS00243349
 	/*set dma source burst mode for VRFB */
 	omap_set_dma_src_burst_mode(tx->dma_ch, OMAP_DMA_DATA_BURST_16);
-//720 ISP Enable OMAPS00235346
-//720 ISP Enable OMAPS00235346
+
 	/* dest_port required only for OMAP1 */
 //Patch for OMAPS00237522
 #ifdef NO_VRFB_ROT_PATCH 
@@ -1919,10 +1999,10 @@ static int omap_vout_buffer_prepare(struct videobuf_queue *q,
 //Patch for OMAPS00237522
 	/*set dma dest burst mode for VRFB */
 	omap_set_dma_dest_burst_mode(tx->dma_ch, OMAP_DMA_DATA_BURST_16);
-//Patch for OMAPS00237522	
+//Change for OMAPS00243349
 	/* enable dest data packing */
-	omap_set_dma_dest_data_pack(tx->dma_ch, 1);
-//Patch for OMAPS00237522
+	//omap_set_dma_dest_data_pack(tx->dma_ch, 1);
+//Change for OMAPS00243349
 	omap_dma_set_global_params(DMA_DEFAULT_ARB_RATE, 0x20, 0);
 
 #ifdef CONFIG_PM
@@ -1940,8 +2020,10 @@ static int omap_vout_buffer_prepare(struct videobuf_queue *q,
 #endif
 
 	omap_start_dma(tx->dma_ch);
-	interruptible_sleep_on_timeout(&tx->wait, VRFB_TX_TIMEOUT);
-
+//Change for OMAPS00243349
+	//interruptible_sleep_on_timeout(&tx->wait, VRFB_TX_TIMEOUT);
+	wait_event_interruptible_timeout(tx->wait, tx->tx_status != 0,VRFB_TX_TIMEOUT);
+//Change for OMAPS00243349
 	if (tx->tx_status == 0) {
 		omap_stop_dma(tx->dma_ch);
 		return -EINVAL;
@@ -2202,13 +2284,14 @@ static int omap_vout_release(struct file *file)
 //Change for OMAPS00241246 
        u32 retval = 0;
 
-       omap2_clkdm_allow_idle(cam_clkdm);
+     //  omap2_clkdm_allow_idle(cam_clkdm);
 	retval = omap_pm_set_max_mpu_wakeup_lat(&pm_qos_handle1,-1);
 	if (retval) 
 		{		
 		pr_err("%s %d Error setting MPU cstr\n", __func__, __LINE__);	
 		}
 
+stream_on = 0;
 //Change for OMAPS00241246 	
 	if (!vout)
 		return 0;
@@ -2243,19 +2326,12 @@ static int omap_vout_release(struct file *file)
 	if (ret)
 		v4l2_warn(&vout->vid_dev->v4l2_dev,
 				"Unable to apply changes\n");
-//720 ISP Enable OMAPS00235346
-#ifdef CONFIG_OMAP3_ISP_RESIZER
-	/* Release the ISP resizer resource if not already done so */
-	if (vout->use_isp_rsz_for_downscale && vout->rsz_configured) {
-		ispdss_put_resource();
-		vout->rsz_configured = 0;
-		vout->use_isp_rsz_for_downscale = 0;
-		printk(KERN_INFO "<%s> ISP resizer released\n", __func__);
-	}
 
-	vrfb_configured = 0;
+#ifdef CONFIG_OMAP3_ISP_RESIZER_ON_OVERLAY
+	/* Release the ISP resizer resource if not already done so */
+	disable_isp_rsz(vout);
 #endif
-//720 ISP Enable OMAPS00235346
+
 	/* Free all buffers */
 #ifndef CONFIG_ARCH_OMAP4
 	omap_vout_free_allbuffers(vout);
@@ -2297,9 +2373,7 @@ static int omap_vout_open(struct file *file)
 //Change for OMAPS00241246 
 	u32 retval = 0;
 	
-	omap2_clkdm_deny_idle(cam_clkdm);
-
-	retval = omap_pm_set_max_mpu_wakeup_lat(&pm_qos_handle1,10);	
+		retval = omap_pm_set_max_mpu_wakeup_lat(&pm_qos_handle1,18);	
 	if (retval) 
 		{		
 		pr_err("%s %d Error setting MPU cstr\n", __func__, __LINE__);			
@@ -2307,6 +2381,7 @@ static int omap_vout_open(struct file *file)
 
 //Change for OMAPS00241246 
 	vout = video_drvdata(file);
+
 
 	mutex_lock(&vout->lock);
 	vout->opened += 1;
@@ -2526,14 +2601,11 @@ static int vidioc_s_fmt_vid_out(struct file *file, void *fh,
 	vout->bpp = bpp;
 	vout->pix = f->fmt.pix;
 	vout->vrfb_bpp = 1;
-//720 ISP Enable OMAPS00235346
 
-#ifdef CONFIG_OMAP3_ISP_RESIZER
-	/*check for 720p format*/
-	if (need_isp_rsz(vout))
-		vout->use_isp_rsz_for_downscale = 1;
+#ifdef CONFIG_OMAP3_ISP_RESIZER_ON_OVERLAY
+	enable_isp_rsz(vout);
 #endif
-//720 ISP Enable OMAPS00235346
+
 	ovl->info.field = dev_buf_type;
 	ovl->info.pic_height = f->fmt.pix.height;
 
@@ -2593,8 +2665,9 @@ static int vidioc_s_fmt_vid_overlay(struct file *file, void *fh,
 	ovl = ovid->overlays[0];
 
 //720 ISP Enable OMAPS00235346
-#ifdef CONFIG_OMAP3_ISP_RESIZER
-	if (vout->use_isp_rsz_for_downscale) {
+#ifdef CONFIG_OMAP3_ISP_RESIZER_ON_OVERLAY
+	enable_isp_rsz(vout);
+	if (vout->isprsz & ISPRSZ_ENABLE) {
 		/* align the output width to 16 bytes
 		 * ISP resizer requires the output width to be
 		 * aligned to 16 bytes.
@@ -2797,23 +2870,13 @@ static int vidioc_s_crop(struct file *file, void *fh, struct v4l2_crop *crop)
 	}
 
 	if (crop->type == V4L2_BUF_TYPE_VIDEO_OUTPUT) {
-//720 ISP Enable OMAPS00235346
-#ifdef CONFIG_OMAP3_ISP_RESIZER
-		/* omap_vout_new_corp sets the use_isp_rsz_for_downscale
-		 * flag based on whether there is a need for scaling beyond
-		 * 4x. ISP resizer is used for downscaling beyond 1/4x as DSS
-		 * doesn't support it.
-		 */
-		ret = omap_vout_new_crop(&vout->pix, &vout->crop, &vout->win,
-				&vout->fbuf, &crop->c,
-				&vout->use_isp_rsz_for_downscale);
-#else
-		ret = omap_vout_new_crop(&vout->pix, &vout->crop, &vout->win,
-				&vout->fbuf, &crop->c,
-				NULL);
+#ifdef CONFIG_OMAP3_ISP_RESIZER_ON_OVERLAY
+		enable_isp_rsz(vout);
 #endif
+		ret = omap_vout_new_crop(&vout->pix, &vout->crop, &vout->win,
+				&vout->fbuf, &crop->c);
 	}
-//720 ISP Enable OMAPS00235346
+
 s_crop_err:
 	mutex_unlock(&vout->lock);
 	return ret;
@@ -3007,15 +3070,10 @@ static int vidioc_reqbufs(struct file *file, void *fh,
 		goto reqbuf_err;
 	}
 
-//720 ISP Enable OMAPS00235346
-#ifdef CONFIG_OMAP3_ISP_RESIZER
-	/*check for 720p format*/
-	if (need_isp_rsz(vout))
-		vout->use_isp_rsz_for_downscale = 1;
-
-	vout->rsz_configured = 0;
+#ifdef CONFIG_OMAP3_ISP_RESIZER_ON_OVERLAY
+	enable_isp_rsz(vout);
+	vout->isprsz &= ~ISPRSZ_CONFIGURED;
 #endif
-//720 ISP Enable OMAPS00235346
 	/* If buffers are already allocated free them */
 	if (q->bufs[0] && (V4L2_MEMORY_MMAP == q->bufs[0]->memory)) {
 		if (vout->mmap_count) {
@@ -3112,12 +3170,11 @@ static int vidioc_qbuf(struct file *file, void *fh,
 		goto err;
 	}
 #endif
-//720 ISP Enable OMAPS00235346
-#ifdef CONFIG_OMAP3_ISP_RESIZER
+#ifdef CONFIG_OMAP3_ISP_RESIZER_ON_OVERLAY
 	/* initialize the ISP resizer */
 	ret = init_isp_rsz(vout);
 	if (ret)
-		return ret;
+		goto err;
 
 	/* setup the vrfb so that the first frames are also setup
 	* correctly in the vrfb
@@ -3127,7 +3184,6 @@ static int vidioc_qbuf(struct file *file, void *fh,
 		omap_vout_vrfb_buffer_setup(vout, &count, 0);
 		vrfb_configured = 1;
 	}
-//720 ISP Enable OMAPS00235346
 #endif
 
 	ret = videobuf_qbuf(q, buffer);
@@ -3238,13 +3294,11 @@ static int vidioc_streamon(struct file *file, void *fh, enum v4l2_buf_type i)
 		ret = -EIO;
 		goto streamon_err1;
 	}
-//720 ISP Enable OMAPS00235346
-#ifdef CONFIG_OMAP3_ISP_RESIZER
-	/*check for 720p format*/
-	if (need_isp_rsz(vout))
-		vout->use_isp_rsz_for_downscale = 1;
+
+#ifdef CONFIG_OMAP3_ISP_RESIZER_ON_OVERLAY
+	enable_isp_rsz(vout);
 #endif
-//720 ISP Enable OMAPS00235346
+
 	/* Get the next frame from the buffer queue */
 	vout->next_frm = vout->cur_frm = list_entry(vout->dma_queue.next,
 			struct videobuf_buffer, queue);
@@ -3321,7 +3375,7 @@ static int vidioc_streamon(struct file *file, void *fh, enum v4l2_buf_type i)
 
 streamon_err1:
 	if (ret)
-		videobuf_streamoff(q);
+		vidioc_streamoff(file, fh, i);
 streamon_err:
 	mutex_unlock(&vout->lock);
 	return ret;
@@ -3371,24 +3425,20 @@ static int vidioc_streamoff(struct file *file, void *fh, enum v4l2_buf_type i)
 	if (ret)
 		v4l2_err(&vout->vid_dev->v4l2_dev, "failed to change mode in"
 				" streamoff\n");
-//720 ISP Enable OMAPS00235346
-#ifdef CONFIG_OMAP3_ISP_RESIZER
-	/* release resizer now */
-	if (vout->use_isp_rsz_for_downscale && vout->rsz_configured) {
-		ispdss_put_resource();
-		vout->rsz_configured = 0;
-		vout->use_isp_rsz_for_downscale = 0;
-		printk(KERN_INFO "<%s> ISP resizer released\n", __func__);
-	}
 
-	vrfb_configured = 0;
+#ifdef CONFIG_OMAP3_ISP_RESIZER_ON_OVERLAY
+	/* release resizer now */
+	disable_isp_rsz(vout);
 #endif
-//720 ISP Enable OMAPS00235346
 #ifdef CONFIG_PM
 	if (pdata->set_min_bus_tput)
 		pdata->set_min_bus_tput(
 			((vout->vid_dev)->v4l2_dev).dev,
 				OCP_INITIATOR_AGENT, 0);
+#endif
+
+#ifdef SKIP_FIRST_FRAME
+	nDropCount = DROP_FRAMES_COUNT;
 #endif
 
 finish:
@@ -3581,11 +3631,10 @@ static int __init omap_vout_setup_video_data(struct omap_vout_device *vout)
 	vout->control[2].id = V4L2_CID_HFLIP;
 	vout->control[2].value = 0;
 	vout->vrfb_bpp = 2;
-//720 ISP Enable OMAPS00235346
-#ifdef CONFIG_OMAP3_ISP_RESIZER
-	vout->use_isp_rsz_for_downscale = 0;
+#ifdef CONFIG_OMAP3_ISP_RESIZER_ON_OVERLAY
+	vout->isprsz = 0;
 #endif
-//720 ISP Enable OMAPS00235346
+
 	control[1].id = V4L2_CID_BG_COLOR;
 	control[1].value = 0;
 
@@ -3704,9 +3753,13 @@ static int __init omap_vout_setup_video_bufs(struct platform_device *pdev,
 	init_waitqueue_head(&vout->vrfb_dma_tx.wait);
 
 	/* Allocate VRFB buffers if selected through bootargs */
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+	static_vrfb_allocation = 1;
+	printk("AKMM: Bootargs problem, hence hardcoding static buffer Variable");	
+#else
 	static_vrfb_allocation = (vid_num == 0) ?
 		vid1_static_vrfb_alloc : vid2_static_vrfb_alloc;
-
+#endif
 	/* statically allocated the VRFB buffer is done through
 	   commands line aruments */
 	if (static_vrfb_allocation) {
@@ -3735,6 +3788,110 @@ free_buffers:
 	/* NOTE: OMAP4, if TILER allocation, then nothing to pre-allocate */
 	return 0;
 }
+
+#ifdef CONFIG_OMAP3_ISP_RESIZER_ON_OVERLAY
+/* attrs to select control ISP resizer:
+ * 'isprsz_mode' to turn on/off auto enabling ISP resizer
+ * 'isprsz_enable' to manually enable ISP resizer
+ *
+ * they are under the directory,
+ *     /sys/devices/platform/omap_vout/video4linux/video[12]/
+ */
+static ssize_t isprsz_enable_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct video_device *vdev = to_video_device(dev);
+	struct omap_vout_device *vout = video_get_drvdata(vdev);
+
+	return sprintf(buf, "%d\n",
+			(vout->isprsz & ISPRSZ_CONFIGURED)?1:0);
+}
+
+static ssize_t isprsz_enable_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct video_device *vdev = to_video_device(dev);
+	struct omap_vout_device *vout = video_get_drvdata(vdev);
+
+	int ret = 0;
+	if (vout->isprsz & ISPRSZ_CONFIGURED) {
+		printk(KERN_ERR "<%s> could not set isprsz_enable. try "
+				"after isprsz released.\n", __func__);
+		ret = -EBUSY;
+		goto exit;
+	}
+
+	if (!(vout->isprsz & ISPRSZ_MANUALMODE)) {
+		printk(KERN_ERR "<%s> could not set isprsz_enable. set "
+				"isprsz_mode to manual first.\n", __func__);
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	if (strncmp(buf, "1", 1) == 0) {
+		vout->isprsz |= ISPRSZ_ENABLE;
+		/* enable_isp_rsz is used only for isprsz_mode is auto.
+		 * so, update max downscale ratio here manually.
+		 */
+		omap_vout_set_max_downscale(8);
+		printk(KERN_INFO "<%s> ISP resizer enabled", __func__);
+	} else {
+		vout->isprsz &= ~ISPRSZ_ENABLE;
+		disable_isp_rsz(vout);
+	}
+
+exit:
+	return (0 > ret)?ret:strlen(buf);
+}
+
+static ssize_t isprsz_mode_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct video_device *vdev = to_video_device(dev);
+	struct omap_vout_device *vout = video_get_drvdata(vdev);
+
+	return sprintf(buf, "%s\n",
+			(vout->isprsz & ISPRSZ_MANUALMODE)?"manual":"auto");
+}
+
+static ssize_t isprsz_mode_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct video_device *vdev = to_video_device(dev);
+	struct omap_vout_device *vout = video_get_drvdata(vdev);
+
+	int ret = 0;
+
+	if (vout->isprsz & ISPRSZ_CONFIGURED) {
+		printk(KERN_ERR, "<%s> could not change isprsz_mode. "
+				"try after isprsz released.\n", __func__);
+		ret = -EBUSY;
+		goto exit;
+	}
+
+	if (strncmp(buf, "m", 1) == 0) {	/* m for manual */
+		vout->isprsz |= ISPRSZ_MANUALMODE;
+	} else if (strncmp(buf, "a", 1) == 0) {	/* a for auto */
+		vout->isprsz &= ~ISPRSZ_MANUALMODE;
+	} else {
+		printk(KERN_ERR "<%s> invalid input. "
+				"try 'manual' or 'auto'\n", __func__);
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	printk(KERN_INFO "<%s> set ISP resizer mode to %s\n", __func__,
+			(vout->isprsz & ISPRSZ_MANUALMODE)?"manual":"auto");
+
+exit:
+	return (0 > ret)?ret:strlen(buf);
+}
+
+static DEVICE_ATTR(isprsz_enable, S_IRUGO|S_IWUSR|S_IWGRP,
+		isprsz_enable_show, isprsz_enable_store);
+static DEVICE_ATTR(isprsz_mode, S_IRUGO|S_IWUSR|S_IWGRP,
+		isprsz_mode_show, isprsz_mode_store);
+#endif
 
 /* Create video out devices */
 static int __init omap_vout_create_video_devices(struct platform_device *pdev)
@@ -3813,6 +3970,7 @@ static int __init omap_vout_create_video_devices(struct platform_device *pdev)
 		}
 		video_set_drvdata(vfd, vout);
 
+
 		/* Configure the overlay structure */
 		ret = omapvid_init(vid_dev->vouts[k], 0, 0);
 		if (!ret)
@@ -3835,6 +3993,10 @@ error:
 		return ret;
 
 success:
+#ifdef CONFIG_OMAP3_ISP_RESIZER_ON_OVERLAY
+		device_create_file(&vfd->dev, &dev_attr_isprsz_enable);
+		device_create_file(&vfd->dev, &dev_attr_isprsz_mode);
+#endif
 		dev_info(&pdev->dev, ": registered and initialized"
 				" video device %d\n", vfd->minor);
 		if (k == (pdev->num_resources - 1))
@@ -3866,6 +4028,10 @@ static void omap_vout_cleanup_device(struct omap_vout_device *vout)
 			 */
 			video_unregister_device(vfd);
 		}
+#ifdef CONFIG_OMAP3_ISP_RESIZER_ON_OVERLAY
+		device_remove_file(&vfd->dev, &dev_attr_isprsz_enable);
+		device_remove_file(&vfd->dev, &dev_attr_isprsz_mode);
+#endif
 	}
 
 #ifndef CONFIG_ARCH_OMAP4
@@ -3975,13 +4141,13 @@ static int __init omap_vout_probe(struct platform_device *pdev)
 					OMAP_DSS_DISPLAY_CAP_MANUAL_UPDATE) {
 #ifdef CONFIG_FB_OMAP2_FORCE_AUTO_UPDATE
 				if (dssdrv->enable_te)
-					dssdrv->enable_te(def_display, 0);
+					dssdrv->enable_te(def_display, 1);
 				if (dssdrv->set_update_mode)
 					dssdrv->set_update_mode(def_display,
 							OMAP_DSS_UPDATE_AUTO);
 #else	/* MANUAL_UPDATE */
 				if (dssdrv->enable_te)
-					dssdrv->enable_te(def_display, 0);
+					dssdrv->enable_te(def_display, 1);
 				if (dssdrv->set_update_mode)
 					dssdrv->set_update_mode(def_display,
 							OMAP_DSS_UPDATE_MANUAL);

@@ -18,8 +18,11 @@ extern u32 enable_off_mode;
 extern u32 sleep_while_idle;
 extern u32 omap4_device_off_counter;
 extern u32 voltage_off_while_idle;
+
 //idle current optimisation 
-extern bool cam_in_use;
+extern bool front_cam_in_use;
+extern bool back_cam_in_use;
+
 extern bool stream_on;  // 720p_playback_fix
 /* modified for mp3 current -- begin */
 extern int audio_on;

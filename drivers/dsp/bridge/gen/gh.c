@@ -121,6 +121,11 @@ void gh_exit(void)
 void *gh_find(struct gh_t_hash_tab *hash_tab, void *key)
 {
 	struct element *elem;
+	
+	if(hash_tab == NULL){
+       	printk("Hash table is NULL\n");
+       	return NULL ;
+    }
 
 	elem = hash_tab->buckets[(*hash_tab->hash) (key, hash_tab->max_bucket)];
 

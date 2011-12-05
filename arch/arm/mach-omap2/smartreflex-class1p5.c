@@ -25,29 +25,24 @@
 #include <linux/uaccess.h>
 #include <linux/kobject.h>
 #include <linux/workqueue.h>
+#include <plat/omap-pm.h>
+
+//#include <mach/gpio.h>
+//#include <plat/mux.h>
 
 #include <plat/opp.h>
 #include <plat/smartreflex.h>
 #include <plat/voltage.h>
 #include "smartreflex-class1p5.h"
+#include "prm.h"
 
 #define MAX_VDDS 3
 #define SR1P5_SAMPLING_DELAY_MS	1
 #define SR1P5_STABLE_SAMPLES	5
 #define SR1P5_MAX_TRIGGERS	5
-#define MARGIN_STEPS
-//#define SMARTREFLEX_DEBUG
 
-#ifdef MARGIN_STEPS
-/* Default steps added for 1G volt is 5 in uV */
-static unsigned long sr_margin_steps_1g = 62500;
+#define SR_DEBUG 1
 
-/* Default steps added for less than 1G OPP's is 3 in uV*/
-static unsigned long sr_margin_steps = 37500;
-
-
-
-#endif 
 /*
  * we expect events in 10uS, if we dont get 2wice times as much,
  * we could kind of ignore this as a missed event.
@@ -67,6 +62,7 @@ struct sr_class1p5_work_data {
 	struct delayed_work work;
 	struct voltagedomain *voltdm;
 	struct omap_volt_data *vdata;
+	struct pm_qos_request_list *qos_request;
 	u8 num_calib_triggers;
 	u8 num_osc_samples;
 	bool work_active;
@@ -153,6 +149,135 @@ static int sr_class1p5_notify(struct voltagedomain *voltdm, u32 status)
 	return 0;
 }
 
+#define SR_CLASS1P5_LOOP_US	100
+#define MAX_STABILIZATION_COUNT 100
+#define MAX_LOOP_COUNT		(MAX_STABILIZATION_COUNT * 20)
+
+static inline void sr_udelay(u32 delay)
+{
+	while (delay-- > 0) {
+		cpu_relax();
+		udelay(1);
+	};
+
+}
+
+static void  sr_recalibrate(struct sr_class1p5_work_data *work_data)
+{
+
+	unsigned long u_volt_current = 0;
+	struct omap_volt_data *volt_data;
+	struct voltagedomain *voltdm;
+	
+	u32 max_loop_count = MAX_LOOP_COUNT;
+	u32 exit_loop_on = 0;
+	u8 new_v = 0;
+	u8 high_v = 0;
+		
+	/* Start Smart reflex */
+
+	if (unlikely(!work_data)) {
+		pr_err("sr_recalibrate %s: ooops.. null work_data?\n", __func__);
+		return;
+	}
+
+	voltdm = work_data->voltdm;
+
+	if (unlikely(!work_data->work_active)) {
+#if SR_DEBUG	
+		printk("sr_recalibrate %s:%s unplanned work invocation!\n", __func__,
+		       voltdm->name);
+#endif			   
+		return;
+	}
+       
+	/* Clear pending events */
+	sr_notifier_control(voltdm, false);
+	/* Clear all transdones */
+	while (omap_vp_is_transdone(voltdm))
+		{
+		omap_vp_clear_transdone(voltdm);
+		}
+	/* trigger sampling */
+	sr_notifier_control(voltdm, true);
+	/* We need to wait for SR to stabilize before we start sampling */
+	sr_udelay(MAX_STABILIZATION_COUNT * SR_CLASS1P5_LOOP_US);
+
+	/* Ready for recalibration */
+	while (max_loop_count) {
+		if(strcmp(voltdm->name,"mpu")==0)
+			new_v = prm_read_mod_reg(OMAP3430_GR_MOD,
+				OMAP3_PRM_VP1_VOLTAGE_OFFSET);
+		if(strcmp(voltdm->name,"core")==0)
+			new_v = prm_read_mod_reg(OMAP3430_GR_MOD,
+				OMAP3_PRM_VP2_VOLTAGE_OFFSET);
+
+		/* handle oscillations */
+		if (new_v != high_v) {
+			high_v = (high_v < new_v) ? new_v : high_v;
+			exit_loop_on = MAX_STABILIZATION_COUNT;
+		}
+		/* wait for one more stabilization loop for us to sample */
+		sr_udelay(SR_CLASS1P5_LOOP_US);
+
+		max_loop_count--;
+		exit_loop_on--;
+		/* Stabilization achieved.. quit */
+		if (!exit_loop_on)
+			break;
+	}
+	/*
+	 * bad case where we are oscillating.. flag it,
+	 * but continue with higher v
+	 */
+	if (!max_loop_count && exit_loop_on) {
+		pr_warning("%s: %s: for nominal voltage %d  exited with voltages 0x%02x 0x%02x\n",
+			__func__, voltdm->name, work_data->vdata->volt_nominal, new_v, high_v);
+	}
+	/* Stop Smart reflex */
+	sr_notifier_control(voltdm, false);
+	omap_vp_disable(voltdm);
+       sr_disable(voltdm);
+
+	volt_data = work_data->vdata;
+	volt_data->volt_calibrated = (((new_v * 125) + 6000)) * 100 ;
+
+
+if (cpu_is_omap3630()) {
+    		volt_data->volt_calibrated += volt_data->sr_oppmargin;
+		if (volt_data->volt_calibrated > volt_data->volt_nominal) {
+			volt_data->volt_calibrated = volt_data->volt_nominal;
+		}
+	}
+
+	u_volt_current = omap_vp_get_curr_volt(voltdm);
+#if SR_DEBUG	
+		printk("current voltage for %s before calibration is %ld adding margin %d ,vnom being %d \n",
+		       voltdm->name,u_volt_current,volt_data->sr_oppmargin,volt_data->volt_nominal);
+#endif		
+
+	if (volt_data->volt_calibrated != u_volt_current) {
+#if SR_DEBUG	
+                     printk("sr_recalibrate %s:%s reconfiguring to voltage %d\n", __func__, voltdm->name, volt_data->volt_calibrated);	
+#else	
+			printk("%s:%s reconfiguring to voltage %d\n",
+			 __func__, voltdm->name, volt_data->volt_calibrated);
+#endif			 
+	              omap_voltage_scale_vdd(voltdm, volt_data);
+		
+	
+
+}
+#if SR_DEBUG
+                    u_volt_current = omap_vp_get_curr_volt(voltdm);
+		      printk("sr_recalibrate Setting  calib volt %ld , calibrated voltage was  %d for %s done  \n ",u_volt_current,volt_data->volt_calibrated,voltdm->name);
+#endif
+
+	work_data->work_active = false;
+	return;
+}
+
+
 /**
  * do_calibrate() - work which actually does the calibration
  * @work: pointer to the work
@@ -172,9 +297,15 @@ static void do_calibrate(struct work_struct *work)
 	unsigned long u_volt_safe = 0, u_volt_current = 0;
 	struct omap_volt_data *volt_data;
 	struct voltagedomain *voltdm;
-
+/*
+	if(!gpio_get_value( OMAP_GPIO_TA_NCONNECTED ))
+	{	
+		printk("SR_WORKAROUND - return by ta or usb\n");
+		return;
+	}
+*/
 	if (unlikely(!work_data)) {
-		pr_err("%s: ooops.. null work_data?\n", __func__);
+		pr_err("SR_DEBUG %s: ooops.. null work_data?\n", __func__);
 		return;
 	}
 
@@ -183,6 +314,9 @@ static void do_calibrate(struct work_struct *work)
 	 * 1.5 disable was called.
 	 */
 	if (omap_vscale_pause(work_data->voltdm, true)) {
+#if SR_DEBUG
+		printk("SR_DEBUG do_calibrate handle race condition  %d\n",work_data->vdata->volt_nominal);
+#endif		
 		schedule_delayed_work(&work_data->work,
 				      msecs_to_jiffies(SR1P5_SAMPLING_DELAY_MS *
 						       SR1P5_STABLE_SAMPLES));
@@ -195,8 +329,10 @@ static void do_calibrate(struct work_struct *work)
 	 * flag and return.
 	 */
 	if (unlikely(!work_data->work_active)) {
-		pr_err("%s:%s unplanned work invocation!\n", __func__,
+#if SR_DEBUG	
+		printk("SR_DEBUG %s:%s unplanned work invocation!\n", __func__,
 		       voltdm->name);
+#endif			   
 		omap_vscale_unpause(work_data->voltdm);
 		return;
 	}
@@ -204,7 +340,10 @@ static void do_calibrate(struct work_struct *work)
 	work_data->num_calib_triggers++;
 	/* if we are triggered first time, we need to start isr to sample */
 	if (work_data->num_calib_triggers == 1)
+		{
+		printk("SR_DEBUG start sampling  %d \n",work_data->vdata->volt_nominal);
 		goto start_sampling;
+		}
 
 	/* Stop isr from interrupting our measurements :) */
 	sr_notifier_control(voltdm, false);
@@ -214,11 +353,14 @@ static void do_calibrate(struct work_struct *work)
 	/* if there are no samples captured.. SR is silent, aka stability! */
 	if (!work_data->num_osc_samples) {
 		u_volt_safe = omap_vp_get_curr_volt(voltdm);
+#if SR_DEBUG
+		printk("SR_DEBUG done_calib %d  volt curr %ld volt safe %ld \n",work_data->vdata->volt_nominal,u_volt_current,u_volt_safe);
+#endif		
 		u_volt_current = u_volt_safe;
 		goto done_calib;
 	}
 	if (work_data->num_calib_triggers == SR1P5_MAX_TRIGGERS) {
-		pr_warning("%s: %s recalib timeout!\n", __func__,
+		pr_warning("SR_DEBUG %s: %s recalib timeout!\n", __func__,
 			   work_data->voltdm->name);
 		goto oscillating_calib;
 	}
@@ -230,9 +372,17 @@ start_sampling:
 	sr_notifier_control(voltdm, false);
 	/* Clear all transdones */
 	while (omap_vp_is_transdone(voltdm))
+		{
+#if SR_DEBUG		
+		printk("SR_DEBUG Clear all transdone %d \n",work_data->vdata->volt_nominal);
+#endif		
 		omap_vp_clear_transdone(voltdm);
+		}
 	/* trigger sampling */
 	sr_notifier_control(voltdm, true);
+#if SR_DEBUG
+	printk("SR_DEBUG  schedule after isr trigger  volt %d \n",work_data->vdata->volt_nominal);
+#endif	
 	schedule_delayed_work(&work_data->work,
 			      msecs_to_jiffies(SR1P5_SAMPLING_DELAY_MS *
 					       SR1P5_STABLE_SAMPLES));
@@ -259,41 +409,27 @@ done_calib:
 	 * switch
 	 */
 
-#ifdef  MARGIN_STEPS
-	#ifdef SMARTREFLEX_DEBUG
-	printk(" volt domain = %s \t volt_data-volt_calibrated>volt_calibrated = %d  u_volt_current = %d volt_dynamic_nominal = %d\t volt_nominal= %d \n", voltdm->name, volt_data->volt_calibrated, u_volt_current ,
-	volt_data->volt_dynamic_nominal, volt_data->volt_nominal);
-	#endif
-
-	if(strcmp(voltdm->name,"core")!=0)                                            // SR VDD FIX
-	{                                                                              
-#ifdef SMARTREFLEX_DEBUG                                                           
-    	       printk("%d margin added to Vsr \n",sr_margin_steps);                
+	if (cpu_is_omap3630()) {
+#if SR_DEBUG	
+		printk("SR_DEBUG %s:%s - volt nominal %d sr opp margin %d\n", __func__, voltdm->name,volt_data->volt_nominal, volt_data->sr_oppmargin);
 #endif
-		volt_data->volt_calibrated += sr_margin_steps; 
+		volt_data->volt_calibrated += volt_data->sr_oppmargin;
+		if (volt_data->volt_calibrated > volt_data->volt_nominal) {
+			volt_data->volt_calibrated = volt_data->volt_nominal;
+		}
 	}
-	else
-		{
-#ifdef SMARTREFLEX_DEBUG
-		printk("No step addition for core domain smart reflex");
-#endif
-		}                                                                           // SR VDD FIX
-	
-	if( volt_data->volt_calibrated > volt_data->volt_nominal)
-		{
-             volt_data->volt_calibrated = volt_data->volt_nominal;
-              }
 
-    #ifdef SMARTREFLEX_DEBUG
-	printk(" margin steps volt_data-volt_calibrated>volt_calibrated = %d  u_volt_current = %d volt_dynamic_nominal = %d\t volt_nominal= %d \n", volt_data->volt_calibrated, u_volt_current ,
-	volt_data->volt_dynamic_nominal, volt_data->volt_nominal);
-	#endif
-#endif
 	if (volt_data->volt_calibrated != u_volt_current) {
-	
+#if SR_DEBUG	
+printk("SR_DEBUG %s:%s reconfiguring to voltage %d\n", __func__, voltdm->name, volt_data->volt_calibrated);	
+#else	
 			printk("%s:%s reconfiguring to voltage %d\n",
 			 __func__, voltdm->name, volt_data->volt_calibrated);
+#endif			 
 		omap_voltage_scale_vdd(voltdm, volt_data);
+#if SR_DEBUG
+		printk("SR_DEBUG Setting  calib volt %d for %s done  \n ",volt_data->volt_calibrated,voltdm->name);
+#endif		
 	}
 
 	/*
@@ -305,6 +441,10 @@ done_calib:
 	 */
 	work_data->work_active = false;
 	omap_vscale_unpause(work_data->voltdm);
+
+	/* Release c-state constraint */
+    //omap_pm_set_max_mpu_wakeup_lat(&work_data->qos_request, -1);
+    //pr_debug("%s - %s: release c-state\n", __func__, voltdm->name);
 }
 
 #if CONFIG_OMAP_SR_CLASS1P5_RECALIBRATION_DELAY
@@ -321,8 +461,6 @@ static void do_recalibrate(struct work_struct *work)
 	struct voltagedomain *voltdm;
 	int idx;
 	static struct sr_class1p5_work_data *work_data;
-
-	printk(" ++++++++  do_recalibrate function ++++++++ \n");
 
 	for (idx = 0; idx < MAX_VDDS; idx++) {
 		work_data = &class_1p5_data.work_data[idx];
@@ -392,10 +530,19 @@ static int sr_class1p5_enable(struct voltagedomain *voltdm,
 	work_data->vdata = volt_data;
 	work_data->work_active = true;
 	work_data->num_calib_triggers = 0;
+
+	/* Hold a c-state constraint */
+    //omap_pm_set_max_mpu_wakeup_lat(&work_data->qos_request, 1000);
+    //pr_debug("%s - %s: hold c-state\n", __func__, voltdm->name);
 	/* program the workqueue and leave it to calibrate offline.. */
+
+#ifdef SR_WORKQUEUE_METHOD	
 	schedule_delayed_work(&work_data->work,
 			      msecs_to_jiffies(SR1P5_SAMPLING_DELAY_MS *
 					       SR1P5_STABLE_SAMPLES));
+#else
+       sr_recalibrate(work_data);  // boot time calibration
+#endif
 
 	return 0;
 }
@@ -432,6 +579,10 @@ static int sr_class1p5_disable(struct voltagedomain *voltdm,
 		sr_notifier_control(voltdm, false);
 		omap_vp_disable(voltdm);
 		sr_disable(voltdm);
+
+		 /* Release c-state constraint */
+        //omap_pm_set_max_mpu_wakeup_lat(&work_data->qos_request, -1);
+        //pr_debug("%s - %s: release c-state\n", __func__, voltdm->name);
 	}
 
 	/* if already calibrated, nothin special to do here.. */
@@ -544,7 +695,9 @@ static int sr_class1p5_start(struct voltagedomain *voltdm,
 		return -ENOMEM;
 	}
 	work_data->voltdm = voltdm;
+#ifdef SR_WORKQUEUE_METHOD		
 	INIT_DELAYED_WORK_DEFERRABLE(&work_data->work, do_calibrate);
+#endif	
 	return 0;
 }
 
@@ -629,8 +782,8 @@ int __init sr_class1p5_init(void)
 		schedule_delayed_work(&recal_work, msecs_to_jiffies(
 				CONFIG_OMAP_SR_CLASS1P5_RECALIBRATION_DELAY));
 #endif
-			pr_err("SmartReflex class 1.5 driver: initialized (%dms)\n",
- 			CONFIG_OMAP_SR_CLASS1P5_RECALIBRATION_DELAY);
+		pr_info("SmartReflex class 1.5 driver: initialized (%dms)\n",
+			CONFIG_OMAP_SR_CLASS1P5_RECALIBRATION_DELAY);
 	}
 	return r;
 }

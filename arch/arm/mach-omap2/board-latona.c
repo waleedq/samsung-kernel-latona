@@ -114,8 +114,10 @@ static struct omap_volt_pmic_info omap_pmic_mpu = {	/* and iva */
 	.vp_vstepmin_vstepmin = 0x01,
 	.vp_vstepmax_vstepmax = 0x04,
 	.vp_vlimitto_timeout_us = 0x200,
-	.vp_vlimitto_vddmin = 0x14,
-	.vp_vlimitto_vddmax = 0x44,
+	.vp_vlimitto_vddmin = 0x19,
+	.vp_vlimitto_vddmax = 0x42,
+//	.vp_vlimitto_vddmin = 0x14,
+//	.vp_vlimitto_vddmax = 0x44,
 };
 
 static struct omap_volt_pmic_info omap_pmic_core = {
@@ -241,6 +243,7 @@ void debug_info_init(void)
 
 int get_hw_revision(void)
 {
+	printk("hw_revision : %d\n", hw_revision);
 	return hw_revision;
 }
 EXPORT_SYMBOL(get_hw_revision);
@@ -305,15 +308,18 @@ static void __init get_board_hw_rev(void)
 
 	switch (hw_revision) {
 	case 0x0:
+		hw_revision = 9;
 		printk("   Latona HW Revision : REV 0.1 \n");
 		break;
 	case 0x1:
+		hw_revision = 10;
 		printk("   Latona HW Revision : REV 0.8 \n");
 		break;
 	case 0x2:
 		printk("   Latona HW Revision : REV 0.9 \n");
 		break;
 	case 0x4:
+		hw_revision = 10;
 		printk("   Latona HW Revision : REV 1.0 \n");
 		break;
 	default:

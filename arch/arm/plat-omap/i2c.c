@@ -184,7 +184,7 @@ static inline int omap2_i2c_add_bus(int bus_id)
 	 * completes.
 	 * Only omap3 has support for constraints
 	 */
-#if 0 /* TI Patch - kernel panic from i2c */
+#if 1 /* TI Patch - kernel panic from i2c */
 	if (cpu_is_omap34xx())
 		pdata->set_mpu_wkup_lat = omap_pm_set_max_mpu_wakeup_lat;
 #endif

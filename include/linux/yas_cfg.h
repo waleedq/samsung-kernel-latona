@@ -32,18 +32,22 @@
 #define YAS_ACC_DRIVER_KXSD9                (5)
 #define YAS_ACC_DRIVER_KXTE9                (6)
 #define YAS_ACC_DRIVER_KXTF9                (7)
-#define YAS_ACC_DRIVER_LIS331DL             (8)
-#define YAS_ACC_DRIVER_LIS331DLH            (9)
-#define YAS_ACC_DRIVER_LIS331DLM            (10)
-#define YAS_ACC_DRIVER_LIS3DH               (11)
-#define YAS_ACC_DRIVER_MMA8452Q             (12)
-#define YAS_ACC_DRIVER_MMA8453Q             (13)
+#define YAS_ACC_DRIVER_KXUD9                (8)
+#define YAS_ACC_DRIVER_LIS331DL             (9)
+#define YAS_ACC_DRIVER_LIS331DLH            (10)
+#define YAS_ACC_DRIVER_LIS331DLM            (11)
+#define YAS_ACC_DRIVER_LIS3DH               (12)
+#define YAS_ACC_DRIVER_MMA8452Q             (13)
+#define YAS_ACC_DRIVER_MMA8453Q             (14)
 
 /*----------------------------------------------------------------------------*/
 /*                               Configuration                                */
 /*----------------------------------------------------------------------------*/
-
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+#define YAS_ACC_DRIVER                      (YAS_ACC_DRIVER_BMA150)
+#else
 #define YAS_ACC_DRIVER                      (YAS_ACC_DRIVER_BMA222)
+#endif
 #define YAS_MAG_DRIVER                      (YAS_MAG_DRIVER_YAS529)
 
 /*----------------------------------------------------------------------------*/
@@ -60,12 +64,16 @@
 #define YAS_DEFAULT_ACCCALIB_DISTORTION     (4000)
 #elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_BMA222
 #define YAS_DEFAULT_ACCCALIB_DISTORTION     (25000)
+#elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_BMA250
+#define YAS_DEFAULT_ACCCALIB_DISTORTION     (20000)
 #elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_KXSD9
 #define YAS_DEFAULT_ACCCALIB_DISTORTION     (80000)
 #elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_KXTE9
 #define YAS_DEFAULT_ACCCALIB_DISTORTION     (400000)
 #elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_KXTF9
 #define YAS_DEFAULT_ACCCALIB_DISTORTION     (2000)
+#elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_KXUD9
+#define YAS_DEFAULT_ACCCALIB_DISTORTION     (20000)
 #elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_LIS331DL
 #define YAS_DEFAULT_ACCCALIB_DISTORTION     (17000)
 #elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_LIS331DLH
@@ -74,10 +82,12 @@
 #define YAS_DEFAULT_ACCCALIB_DISTORTION     (28000)
 #elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_LIS3DH
 #define YAS_DEFAULT_ACCCALIB_DISTORTION     (18000)
-#elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_MMA8453Q
-#define YAS_DEFAULT_ACCCALIB_DISTORTION     (1000)
 #elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_MMA8452Q
 #define YAS_DEFAULT_ACCCALIB_DISTORTION     (1000)
+#elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_MMA8453Q
+#define YAS_DEFAULT_ACCCALIB_DISTORTION     (1000)
+#else
+#error "unknown accelerometer"
 #endif
 
 #if YAS_ACC_DRIVER == YAS_ACC_DRIVER_ADXL345
@@ -96,6 +106,8 @@
 #define YAS_ACC_I2C_SLAVEADDR               (0x0f)
 #elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_KXTF9
 #define YAS_ACC_I2C_SLAVEADDR               (0x0f)
+#elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_KXUD9
+#define YAS_ACC_I2C_SLAVEADDR               (0x18)
 #elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_LIS331DL
 #define YAS_ACC_I2C_SLAVEADDR               (0x1c)
 #elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_LIS331DLH
@@ -104,11 +116,51 @@
 #define YAS_ACC_I2C_SLAVEADDR               (0x08)
 #elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_LIS3DH
 #define YAS_ACC_I2C_SLAVEADDR               (0x18)
-#elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_MMA8453Q
-#define YAS_ACC_I2C_SLAVEADDR               (0x1c)
 #elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_MMA8452Q
 #define YAS_ACC_I2C_SLAVEADDR               (0x1c)
+#elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_MMA8453Q
+#define YAS_ACC_I2C_SLAVEADDR               (0x1c)
+#else
+#error "unknown accelerometer"
 #endif
+
+/*----------------------------------------------------------------------------*/
+/*                     Accelerometer Filter Configuration                     */
+/*----------------------------------------------------------------------------*/
+#if YAS_ACC_DRIVER == YAS_ACC_DRIVER_ADXL345
+#define YAS_ACC_DEFAULT_FILTER_THRESH       (76612)  /* ((38,306 um/s^2)/count) * 2  */
+#elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_ADXL346
+#define YAS_ACC_DEFAULT_FILTER_THRESH       (76612)  /* ((38,306 um/s^2)/count) * 2  */
+#elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_BMA150
+#define YAS_ACC_DEFAULT_FILTER_THRESH       (76612)  /* ((38,306 um/s^2)/count) * 2  */
+#elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_BMA222
+#define YAS_ACC_DEFAULT_FILTER_THRESH       (153227) /* ((153,227 um/s^2)/count) * 1 */
+#elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_BMA250
+#define YAS_ACC_DEFAULT_FILTER_THRESH       (76612)  /* ((38,306 um/s^2)/count) * 2  */
+#elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_KXSD9
+#define YAS_ACC_DEFAULT_FILTER_THRESH       (239460) /* ((11,973 um/s^2)/count) * 20 */
+#elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_KXTE9
+#define YAS_ACC_DEFAULT_FILTER_THRESH       (612909) /* ((612,909 um/s^2)/count) * 1 */
+#elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_KXTF9
+#define YAS_ACC_DEFAULT_FILTER_THRESH       (19152)  /* ((9,576 um/s^2)/count) * 2   */
+#elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_KXUD9
+#define YAS_ACC_DEFAULT_FILTER_THRESH       (215514) /* ((11.973 um/s^2)/count * 18  */
+#elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_LIS331DL
+#define YAS_ACC_DEFAULT_FILTER_THRESH       (176518) /* ((176.518 um/s^2)/count * 1  */
+#elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_LIS331DLH
+#define YAS_ACC_DEFAULT_FILTER_THRESH       (95760)  /* ((9.576 um/s^2)/count * 10   */
+#elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_LIS331DLM
+#define YAS_ACC_DEFAULT_FILTER_THRESH       (306454) /* ((153,227 um/s^2)/count * 2  */
+#elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_LIS3DH
+#define YAS_ACC_DEFAULT_FILTER_THRESH       (76608)  /* ((9,576 um/s^2)/count * 8    */
+#elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_MMA8452Q
+#define YAS_ACC_DEFAULT_FILTER_THRESH       (19152)  /* ((9.576 um/s^2)/count * 2    */
+#elif YAS_ACC_DRIVER == YAS_ACC_DRIVER_MMA8453Q
+#define YAS_ACC_DEFAULT_FILTER_THRESH       (38306)  /* ((38,306 um/s^2)/count * 1   */
+#else
+#error "unknown accelerometer"
+#endif
+
 /*----------------------------------------------------------------------------*/
 /*                    Geomagnetic Calibration Configuration                   */
 /*----------------------------------------------------------------------------*/

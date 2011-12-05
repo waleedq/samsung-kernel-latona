@@ -919,8 +919,13 @@ static irqreturn_t isp_isr(int irq, void *_pdev)
 {
 	struct device *dev = &((struct platform_device *)_pdev)->dev;
 	struct isp_device *isp = dev_get_drvdata(dev);
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+	struct isp_irq *irqdis; //= &isp->irq;
+	struct isp_bufs *bufs; //TI change // = &isp->bufs;
+#else
 	struct isp_irq *irqdis = &isp->irq;
 	struct isp_bufs *bufs = &isp->bufs;
+#endif
 	struct isp_buf *buf;
 	unsigned long flags;
 	u32 irqstatus = 0;
@@ -932,14 +937,36 @@ static irqreturn_t isp_isr(int irq, void *_pdev)
 //	irqstatus = isp_reg_readl(dev, OMAP3_ISP_IOMEM_MAIN, ISP_IRQ0STATUS);
 //	isp_reg_writel(dev, irqstatus, OMAP3_ISP_IOMEM_MAIN, ISP_IRQ0STATUS);
 
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+	// none
+#else
 	if ((isp->running == ISP_STOPPED) &&
-		!irqdis->isp_callbk[CBK_RESZ_DONE])
+			!irqdis->isp_callbk[CBK_RESZ_DONE])
 		return IRQ_NONE;
+#endif
 	irqstatus = isp_reg_readl(dev, OMAP3_ISP_IOMEM_MAIN, ISP_IRQ0STATUS);
 	isp_reg_writel(dev, irqstatus, OMAP3_ISP_IOMEM_MAIN, ISP_IRQ0STATUS);
 
 	irqenable = isp_reg_readl(dev, OMAP3_ISP_IOMEM_MAIN, ISP_IRQ0ENABLE);
 	irqstatus &= irqenable;
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+	//TI start 
+	if( NULL == &isp->irq  || NULL == &isp->bufs ) 
+		return IRQ_NONE;
+	else
+	{	
+		bufs = &isp->bufs;
+		irqdis = &isp->irq;
+	}	
+
+	if((isp->running == ISP_STOPPED) &&
+			!irqdis->isp_callbk[CBK_RESZ_DONE])
+		return IRQ_NONE;
+	//TI end
+#else
+	// none 
+#endif
+
 
 	if (irqstatus & CCDC_VD1)
 		isp->isp_ccdc.lsc_request_enable =
@@ -957,7 +984,11 @@ static irqreturn_t isp_isr(int irq, void *_pdev)
 
 	spin_lock_irqsave(&isp->lock, flags);
 	wait_hs_vs = bufs->wait_hs_vs;
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+	if (irqstatus & CCDC_VD0 && bufs->wait_hs_vs) 	//NCB-TI CSR OMAPS00228014 -- Fix
+#else
 	if (irqstatus & HS_VS /* CCDC_VD0 */&& bufs->wait_hs_vs) 	//NCB-TI CSR OMAPS00228014 -- Fix
+#endif
 		bufs->wait_hs_vs--;
 
 	/* Decrement value also with CSI2 Rx only case*/
@@ -1104,13 +1135,23 @@ static irqreturn_t isp_isr(int irq, void *_pdev)
 	}
 
 	if (irqstatus & CCDC_VD1) {
-		ispccdc_config_shadow_registers(&isp->isp_ccdc);
-		/*
-		 * If CCDC is writing to memory stop CCDC here
-		 * preventig to write to any of our buffers.
-		 */
-		if (CCDC_CAPTURE(isp)/* || isp->config->u.csi.use_mem_read*/ ) //NCB-TI CSR OMAPS00228014 Fix
-			ispccdc_enable(&isp->isp_ccdc, 0);
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+		if( buf->vb->height > 1300 )
+			if (CCDC_CAPTURE(isp) )
+				isp_buf_process(dev, bufs);
+			else {
+#endif
+
+				ispccdc_config_shadow_registers(&isp->isp_ccdc);
+				/*
+				 * If CCDC is writing to memory stop CCDC here
+				 * preventig to write to any of our buffers.
+				 */
+				if (CCDC_CAPTURE(isp)/* || isp->config->u.csi.use_mem_read*/ ) //NCB-TI CSR OMAPS00228014 Fix
+					ispccdc_enable(&isp->isp_ccdc, 0);
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+			}
+#endif
 	}
 
 	if (irqstatus & CCDC_VD0) {
@@ -1474,8 +1515,11 @@ static int __isp_disable_modules(struct device *dev, int suspend)
 
 	/* Let's stop CCDC now. */
 	ispccdc_enable(&isp->isp_ccdc, 0);
-
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+	timeout = jiffies + msecs_to_jiffies(100);
+#else
 	timeout = jiffies + ISP_STOP_TIMEOUT;
+#endif
 	while (ispccdc_busy(&isp->isp_ccdc)) {
 		if (time_after(jiffies, timeout)) {
 			dev_info(dev, "can't stop ccdc module.\n");
@@ -2002,8 +2046,11 @@ static void isp_buf_process(struct device *dev, struct isp_bufs *bufs)
 	struct isp_device *isp = dev_get_drvdata(dev);
 	struct isp_buf *buf;
 	int last;
-
-	if (ISP_BUFS_IS_EMPTY(bufs))
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+	if (ISP_BUFS_IS_EMPTY(bufs) && (ISP_BUF_DONE(bufs))->vb->height <= 1300)
+#else
+		if (ISP_BUFS_IS_EMPTY(bufs))
+#endif
 		return;
 #ifndef ZEUS_CAM	// not required to comment, but just for test purpose	
 	if (CCDC_CAPTURE(isp)) {
@@ -2019,6 +2066,12 @@ static void isp_buf_process(struct device *dev, struct isp_bufs *bufs)
 	last = ISP_BUFS_IS_LAST(bufs);
 
 	if (!last) {
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+		if( buf->vb->height > 1300 ) {
+			isp_set_buf(dev, buf);
+		}
+		else
+#endif
 		/* Set new buffer address. */
 		if((sensor_index == 2) || (isp->pipeline.out_pix.width == 1280)) {
 			if( !ispccdc_busy(&isp->isp_ccdc) )
@@ -2054,7 +2107,9 @@ static void isp_buf_process(struct device *dev, struct isp_bufs *bufs)
 		}
 #endif
 	}
-
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+	if( buf->vb->height <= 1300 )
+#endif
 	/* Mark the current buffer as done. */
 	ISP_BUF_MARK_DONE(bufs);
 
@@ -2069,6 +2124,9 @@ static void isp_buf_process(struct device *dev, struct isp_bufs *bufs)
 	 */
 	buf->vb->state = buf->vb_state;
 	buf->complete(buf->vb, buf->priv);
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+	if( buf->vb->height <= 1300 )
+#endif
 	buf->vb = NULL;
 }
 
@@ -2124,6 +2182,11 @@ int isp_buf_queue(struct device *dev, struct videobuf_buffer *vb,
 		 * receiving a frame.
 		 */
 		bufs->wait_hs_vs++;
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+		if( buf->vb->height > 1300 ) {
+			bufs->wait_hs_vs = 0;
+		}
+#endif
 		isp_enable_interrupts(dev);
 		isp_set_buf(dev, buf);
 		isp_af_try_enable(&isp->isp_af);
@@ -2174,7 +2237,9 @@ int isp_buf_queue(struct device *dev, struct videobuf_buffer *vb,
 			}
 		}
 	}
-
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+	if( buf->vb->height <= 1300 )
+#endif
 	ISP_BUF_MARK_QUEUED(bufs);
 
 	spin_unlock_irqrestore(&isp->lock, flags);

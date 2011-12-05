@@ -31,8 +31,8 @@ int omap2_cm_wait_idlest(void __iomem *reg, u32 mask, u8 idlest,
 #define START_PADCONF_SAVE 0x2
 #define PADCONF_SAVE_DONE  0x1
 
-void omap3_prcm_save_context(void);
-void omap3_prcm_restore_context(void);
+void omap3_cm_save_context(void);
+void omap3_cm_restore_context(void);
 void omap4_prcm_prepare_off(void);
 void omap4_prcm_resume_off(void);
 

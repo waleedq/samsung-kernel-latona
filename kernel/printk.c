@@ -209,7 +209,7 @@ static ssize_t sec_log_buf_show(struct device *dev,
 	return log_buf_len;
 }
 
-static DEVICE_ATTR(log, S_IRUGO | S_IWUGO | S_IRUSR | S_IWUSR,
+static DEVICE_ATTR(log, S_IRUGO | S_IWUSR,
 		   sec_log_buf_show, NULL);
 
 static unsigned int sec_log_buf_start = 0;

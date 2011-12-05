@@ -237,6 +237,11 @@ static int setting_first = FALSE;
 static int cmc623_bypass_mode = FALSE;
 static int current_autobrightness_enable = FALSE;
 static int cmc623_current_region_enable = FALSE;
+#ifdef CONFIG_FB_OMAP_BOOTLOADER_INIT
+static int cmc623_enabled = FALSE;
+#else 
+static int cmc623_enabled = TRUE;
+#endif
 
 int cabc_enable = 0;
 int cur_acl = 0;
@@ -2553,7 +2558,7 @@ int omap_lcd_set_power(struct lcd_device *ld, int power)
 			if(!lms700_state.powered_up)
 			{
 				printk(KERN_INFO "%s(%d)\n", __func__, lms700_state.powered_up);
-				//gpio_set_value(OMAP_GPIO_LCD_EN_SET, GPIO_LEVEL_HIGH);
+				gpio_set_value(OMAP_GPIO_LCD_EN_SET, GPIO_LEVEL_HIGH);
 				gpio_set_value(OMAP_GPIO_LCD_LDO_EN, GPIO_LEVEL_HIGH);
 				msleep(30); 
 				
@@ -2573,7 +2578,7 @@ int omap_lcd_set_power(struct lcd_device *ld, int power)
 			{
 				gpio_set_value(OMAP_GPIO_LVDS_SHDN, GPIO_LEVEL_LOW);
 				mdelay(20);
-				//gpio_set_value(OMAP_GPIO_LCD_EN_SET, GPIO_LEVEL_LOW);
+				gpio_set_value(OMAP_GPIO_LCD_EN_SET, GPIO_LEVEL_LOW);
 				gpio_set_value(OMAP_GPIO_LCD_LDO_EN, GPIO_LEVEL_LOW);
 				mdelay(1);		
 				gpio_set_value(OMAP_GPIO_LVDS_EN, GPIO_LEVEL_LOW);
@@ -3296,7 +3301,7 @@ static int __devinit cmc623_probe(struct omap_dss_device *dssdev)
 		printk(KERN_ERR "\n FAILED TO REQUEST GPIO %d for CMC623 \n", OMAP_GPIO_CMC_BYPASS);
 		return;
 	}
-	gpio_direction_output(OMAP_GPIO_CMC_BYPASS, 0); // BYPASS MODE !!!
+	gpio_direction_output(OMAP_GPIO_CMC_BYPASS, 1); 
 
 	/* 1024 x 600 @ 60 Hz  Reduced blanking VESA CVT 0.31M3-R */
 	panel_timings.x_res          = LCD_XRES,
@@ -3437,75 +3442,103 @@ static int __devexit cmc623_remove(struct omap_dss_device *dssdev)
 	return 0;
 }
 
-static int cmc623_suspend(struct omap_dss_device *dssdev)
-{
-	printk(KERN_INFO " **** %s ****\n", __func__);
-
-	/* LVDS POWER OFF */
-//	msleep(1000);
-	gpio_set_value(OMAP_GPIO_LVDS_SHDN, GPIO_LEVEL_LOW);
-	mdelay(20);
-	//gpio_set_value(OMAP_GPIO_LCD_EN_SET, GPIO_LEVEL_LOW);
-	gpio_set_value(OMAP_GPIO_LCD_LDO_EN, GPIO_LEVEL_LOW);
-	mdelay(1);	
-	gpio_set_value(OMAP_GPIO_LVDS_EN, GPIO_LEVEL_LOW);
-	mdelay(1);		
-	
-	tune_cmc623_suspend();	
-    return 0;
-}
-
-static int cmc623_resume(struct omap_dss_device *dssdev)
-{
-	printk(KERN_INFO " **** %s ****\n", __func__);
-	/* LVDS POWER ON */	
-	gpio_set_value(OMAP_GPIO_LVDS_EN, GPIO_LEVEL_HIGH);
-		
-	tune_cmc623_pre_resume();
-	tune_cmc623_resume();
-	msleep(120);
-
-	/* LCD LDO ON */	
-	//gpio_set_value(OMAP_GPIO_LCD_EN_SET, GPIO_LEVEL_HIGH);
-	gpio_set_value(OMAP_GPIO_LCD_LDO_EN, GPIO_LEVEL_HIGH);
-	msleep(30);
-
-	/* LVDS SHDN ON */	
-	gpio_set_value(OMAP_GPIO_LVDS_SHDN, GPIO_LEVEL_HIGH);
-
-//	mdelay(1);
-	printk(KERN_INFO " ---- %s ----\n", __func__);
-	return 0;
-}
-
 static int cmc623_enable(struct omap_dss_device *dssdev)
 {
 	int r = 0;
-	mdelay(4);
-	if (dssdev->platform_enable)
-		r = dssdev->platform_enable(dssdev);
 
+	if (dssdev->state == OMAP_DSS_DISPLAY_ACTIVE)
+		goto err0;
+	
+	r = omapdss_dpi_display_enable(dssdev);
+	if (r)
+		goto err0;
+
+	/* Delay recommended by panel DATASHEET */
+	mdelay(4);
+	if (dssdev->platform_enable) {
+		r = dssdev->platform_enable(dssdev);
+		if (r)
+			goto err1;
+        }
+	dssdev->state = OMAP_DSS_DISPLAY_ACTIVE;
+
+	if (cmc623_enabled == FALSE) {
+		cmc623_enabled = TRUE;
+	} else {
+		/* LVDS POWER ON */	
+		gpio_set_value(OMAP_GPIO_LVDS_EN, GPIO_LEVEL_HIGH);
+			
+		tune_cmc623_pre_resume();
+		tune_cmc623_resume();
+		msleep(120);
+
+		/* LCD LDO ON */	
+		gpio_set_value(OMAP_GPIO_LCD_EN_SET, GPIO_LEVEL_HIGH);
+		gpio_set_value(OMAP_GPIO_LCD_LDO_EN, GPIO_LEVEL_HIGH);
+		msleep(30);
+
+		/* LVDS SHDN ON */	
+		gpio_set_value(OMAP_GPIO_LVDS_SHDN, GPIO_LEVEL_HIGH);
+
+		//mdelay(1);
+	}
+
+	return r;
+err1:
+	omapdss_dpi_display_disable(dssdev);
+err0:
 	return r;
 }
 
 static void cmc623_disable(struct omap_dss_device *dssdev)
 {
+	if (dssdev->state != OMAP_DSS_DISPLAY_ACTIVE)
+		return;
+		
 	/* lcd off */
-	tune_cmc623_pwm_brightness(0);
-	mdelay(200);
+//	tune_cmc623_pwm_brightness(0);
+//	mdelay(200);
 
 	gpio_set_value(OMAP_GPIO_LVDS_SHDN, GPIO_LEVEL_LOW);
 	mdelay(20);
-	//gpio_set_value(OMAP_GPIO_LCD_EN_SET, GPIO_LEVEL_LOW);
+	gpio_set_value(OMAP_GPIO_LCD_EN_SET, GPIO_LEVEL_LOW);
 	gpio_set_value(OMAP_GPIO_LCD_LDO_EN, GPIO_LEVEL_LOW);
 	mdelay(1);		
 	gpio_set_value(OMAP_GPIO_LVDS_EN, GPIO_LEVEL_LOW);
 	mdelay(4);
 	printk(KERN_INFO " **** P1Lite LCD OFF ****\n");
+
+	tune_cmc623_suspend();	
 	
 	if (dssdev->platform_disable)
 		dssdev->platform_disable(dssdev);
 	mdelay(4);
+	
+	omapdss_dpi_display_disable(dssdev);
+
+	dssdev->state = OMAP_DSS_DISPLAY_DISABLED;
+}
+
+static int cmc623_suspend(struct omap_dss_device *dssdev)
+{
+	printk(KERN_INFO " **** %s ****\n", __func__);
+
+	cmc623_disable(dssdev);	
+
+	dssdev->state = OMAP_DSS_DISPLAY_SUSPENDED;
+	printk(KERN_INFO " ---- %s ----\n", __func__);
+	return 0;
+}
+
+static int cmc623_resume(struct omap_dss_device *dssdev)
+{
+	printk(KERN_INFO " **** %s ****\n", __func__);
+
+	cmc623_enable(dssdev); 
+	
+	dssdev->state = OMAP_DSS_DISPLAY_ACTIVE;
+	printk(KERN_INFO " ---- %s ----\n", __func__);
+	return 0;
 }
 
 static struct omap_dss_driver sec_tune_cmc623 =  {

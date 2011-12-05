@@ -365,6 +365,9 @@ struct usb_composite_dev {
 	unsigned int			product_num; 	/* product number (ex : 0, 1, 2, ..) */
 	struct android_usb_product 	*products;	/* products list */
 #endif
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+	unsigned char	accessory_mode;		/* usb accessory mode */
+#endif
 };
 
 extern int usb_string_id(struct usb_composite_dev *c);

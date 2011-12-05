@@ -35,7 +35,7 @@
 #include "isp/isp.h"
 #include "omap34xxcam.h"
 #include "ce147.h"
-
+bool back_cam_in_use= false;
 #if (CAM_CE147_DBG_MSG)
 #include "dprintk.h"
 #else
@@ -50,9 +50,7 @@ static u32 ce147_pre_state = CE147_STATE_INVALID;
 
 static bool ce147_720p_enable = false;
 static bool ce147_touch_state = false;
-//idle current optimisation 
-bool cam_in_use = false;
-//idle current optimisation 
+
 static struct ce147_sensor ce147 = {
 	.timeperframe = {
 		.numerator    = 1,
@@ -2397,7 +2395,7 @@ static int ce147_set_focus_status(s32 value)
 
 			if(ce147_write_reg(client, sizeof(Lense_AFStart_List), Lense_AFStart_List))
 				goto focus_status_fail;
-			ce147_touch_state = false;
+//			ce147_touch_state = false;
 			break;
 
 		case CE147_AF_STOP :
@@ -2594,7 +2592,7 @@ static int ce147_get_focus(struct v4l2_control *vc)
 		case 2 :
 			vc->value = CE147_AF_STATUS_SUCCESS;
 			/* AE/AWB Lock */
-			if(sensor->focus_mode == CE147_AF_INIT_NORMAL || sensor->focus_mode == CE147_AF_INIT_MACRO)
+			if((sensor->focus_mode == CE147_AF_INIT_NORMAL || sensor->focus_mode == CE147_AF_INIT_MACRO) && (ce147_touch_state == false))
 			{
 				ce147_write_reg(client, sizeof(AEWB_Lock_list), AEWB_Lock_list);
 			}
@@ -2914,7 +2912,8 @@ static int ce147_set_preview(void)
 	printk(CE147_MOD_NAME "ce147_set_preview is called...%d\n", sensor->preview_size);
 
 	ce147_pre_state = ce147_curr_state;
-	ce147_curr_state = CE147_STATE_PREVIEW;    
+	ce147_curr_state = CE147_STATE_PREVIEW;   
+	ce147_touch_state = false;
 
 	/* Set Preview setting (fps, iso, 720p...) */
 	if(ce147_720p_enable) {
@@ -4287,8 +4286,9 @@ static int ioctl_s_parm(struct v4l2_int_device *s, struct v4l2_streamparm *a)
 
 	dprintk(CAM_INF, CE147_MOD_NAME "ioctl_s_parm is called...\n");
 
-	/* Set mode (camera/camcorder/vt) */
+	/* Set mode (camera/camcorder/vt) & state (preview/capture) */
 	sensor->mode = a->parm.capture.capturemode;
+	sensor->state = a->parm.capture.currentstate;
 
 	if(sensor->mode < 1 || sensor->mode > 3) sensor->mode = CE147_MODE_CAMERA;
 	dprintk(CAM_DBG, CE147_MOD_NAME "mode = %d, state = %d\n", sensor->mode, sensor->state);   
@@ -4433,6 +4433,15 @@ static int ioctl_s_power(struct v4l2_int_device *s, enum v4l2_power on)
 
 	dprintk(CAM_INF, CE147_MOD_NAME "ioctl_s_power is called......ON=%x, detect= %x\n", on, sensor->detect);
 
+//idle current optimisation 
+	if(on == V4L2_POWER_ON)
+                 back_cam_in_use= 1 ;
+	else if(on == V4L2_POWER_OFF)
+		  back_cam_in_use = 0 ;
+		
+//idle current optimisation 
+		
+
 	if(on == V4L2_POWER_OFF)
 	{
 		ce147_write_reg(client, sizeof(Lense_AFoff_list), Lense_AFoff_list);
@@ -4457,9 +4466,7 @@ static int ioctl_s_power(struct v4l2_int_device *s, enum v4l2_power on)
 					goto s_power_fail;
 				}
 
-//idle current optimisation 
-                 cam_in_use = 1 ;
-//idle current optimisation 				 
+				 
 				/* Make the default detect */
 				sensor->detect = SENSOR_DETECTED;     
 
@@ -4489,9 +4496,7 @@ static int ioctl_s_power(struct v4l2_int_device *s, enum v4l2_power on)
 
 				/* Make the state init */
 				ce147_pre_state = CE147_STATE_INVALID; 
-//idle current optimisation				
-				  cam_in_use = 0 ;
-//idle current optimisation				  
+			  
 			}
 			break;
 	}
@@ -4500,7 +4505,7 @@ static int ioctl_s_power(struct v4l2_int_device *s, enum v4l2_power on)
 
 s_power_fail:
 //idle current optimisation
-	cam_in_use = 0 ;
+	back_cam_in_use= 0 ;
 //idle current optimisation	
 	printk(CE147_MOD_NAME "ioctl_s_power is failed\n");
 	return -EINVAL;

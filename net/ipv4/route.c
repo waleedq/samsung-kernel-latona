@@ -2588,10 +2588,11 @@ static int ip_route_output_slow(struct net *net, struct rtable **rp,
 			goto out;
 
 		/* RACE: Check return value of inet_select_addr instead. */
-		if (__in_dev_get_rtnl(dev_out) == NULL) {
-			dev_put(dev_out);
-			goto out;	/* Wrong error code */
-		}
+		if (!(dev_out->flags & IFF_UP) || !__in_dev_get_rtnl(dev_out)) {
+             dev_put(dev_out);
+             err = -ENETUNREACH;
+             goto out;     /* Wrong error code */
+    }
 
 		if (ipv4_is_local_multicast(oldflp->fl4_dst) ||
 		    oldflp->fl4_dst == htonl(0xFFFFFFFF)) {

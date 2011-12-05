@@ -12,16 +12,17 @@
 #ifndef OMAP_VOUTLIB_H
 #define OMAP_VOUTLIB_H
 
+#ifdef CONFIG_OMAP3_ISP_RESIZER_ON_OVERLAY
+extern void omap_vout_set_max_downscale(int new_scale);
+#endif
+
 extern void omap_vout_default_crop(struct v4l2_pix_format *pix,
 		struct v4l2_framebuffer *fbuf, struct v4l2_rect *crop);
 
 extern int omap_vout_new_crop(struct v4l2_pix_format *pix,
 		struct v4l2_rect *crop, struct v4l2_window *win,
 		struct v4l2_framebuffer *fbuf,
-//720 ISP Enable OMAPS00235346
-		const struct v4l2_rect *new_crop,
-		int *use_isp_rsz_for_downscale);
-//720 ISP Enable OMAPS00235346
+		const struct v4l2_rect *new_crop);
 
 extern int omap_vout_try_window(struct v4l2_framebuffer *fbuf,
 		struct v4l2_window *new_win);

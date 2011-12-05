@@ -1602,6 +1602,9 @@ static irqreturn_t generic_interrupt(int irq, void *__hci)
  *
  * called in irq context with spinlock held, irqs blocked
  */
+
+int usb_pres = 0;
+EXPORT_SYMBOL(usb_pres);
 irqreturn_t musb_interrupt(struct musb *musb)
 {
 	irqreturn_t	retval = IRQ_NONE;
@@ -1635,6 +1638,11 @@ irqreturn_t musb_interrupt(struct musb *musb)
 
 	/* handle endpoint 0 first */
 	if (musb->int_tx & 1) {
+		if(usb_pres == 0)
+		{
+			printk("usb_pres is set !!! +++++++++++++++++ \n");
+			usb_pres = 1;
+		}
 		if (devctl & MUSB_DEVCTL_HM)
 			retval |= musb_h_ep0_irq(musb);
 		else

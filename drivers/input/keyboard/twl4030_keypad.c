@@ -91,7 +91,7 @@ ssize_t matrixkey_pressed_show(struct device *dev, struct device_attribute *attr
 	return sprintf(buf, "%u\n", count);
 }
 
-static DEVICE_ATTR(matrixkey_pressed, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, matrixkey_pressed_show, NULL);
+static DEVICE_ATTR(matrixkey_pressed, S_IRUGO, matrixkey_pressed_show, NULL);
 
 /*----------------------------------------------------------------------*/
 

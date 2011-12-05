@@ -238,14 +238,12 @@ static int omap2_mbox_is_irq(struct omap_mbox *mbox,
 
 static void omap2_mbox_save_ctx(struct omap_mbox *mbox)
 {
-	int i, j;
-      //  u32 l ;
-     //   l = SMARTIDLE | AUTOIDLE;
-     //	mbox_write_reg(l, MAILBOX_SYSCONFIG);
-     //   printk(" Mailbox SYSCONFIG = %x\n", mbox_read_reg(MAILBOX_SYSCONFIG));
+
+	int i = 0, j;
+	mbox_ctx[i] = mbox_read_reg(MAILBOX_SYSCONFIG);
 
 	/* Save irqs per user */
-	for (j = 0, i = 0; j < nr_mbox_users; i++, j++) {
+	for (j = 0, i = 1; j < nr_mbox_users; i++, j++) {
 		if (cpu_is_omap44xx())
 			mbox_ctx[i] = mbox_read_reg(OMAP4_MAILBOX_IRQENABLE(j));
 		else
@@ -255,17 +253,16 @@ static void omap2_mbox_save_ctx(struct omap_mbox *mbox)
 			i, mbox_ctx[i]);
 	}
 
-	omap2_mbox_shutdown(mbox);
+ 
 }
 
 static void omap2_mbox_restore_ctx(struct omap_mbox *mbox)
 {
-	int i, j;
-
-	omap2_mbox_startup(mbox);
+	int i = 0, j;
+	mbox_write_reg(mbox_ctx[i], MAILBOX_SYSCONFIG);
 
 	/* Restore irqs per user */
-	for (j = 0, i = 0; j < nr_mbox_users; i++, j++) {
+	for (j = 0, i = 1; j < nr_mbox_users; i++, j++) {
 		if (cpu_is_omap44xx())
 			mbox_write_reg(mbox_ctx[i], OMAP4_MAILBOX_IRQENABLE(j));
 		else

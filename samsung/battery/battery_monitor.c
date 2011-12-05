@@ -248,6 +248,15 @@ static ssize_t store_batt_boot_complete(struct kobject *kobj,
     return size;
 }
 
+static ssize_t store_batt_fuelgauge_reset(struct kobject *kobj,
+                    struct kobj_attribute *attr,
+                    const char *buf, size_t size)
+{
+	do_fuelgauge_reset();
+    return size;
+}
+
+
 __ATTR_SHOW_CALLBACK( show_batt_vol, get_battery_level_adc() )
 __ATTR_SHOW_CALLBACK( show_batt_vol_adc, 0 )
 __ATTR_SHOW_CALLBACK( show_batt_temp, get_system_temperature( TEMP_DEG ) * 10 )
@@ -271,21 +280,21 @@ static struct kobj_attribute batt_sysfs_testmode[] = {
 	/* Event logging - Put these attributes at first position of this array 
        For using the call back function 'store_event'
 	*/
-    __ATTR( mp3, 0666, NULL, store_event ), 
-    __ATTR( talk_wcdma, 0666, NULL, store_event ), 
-    __ATTR( talk_gsm, 0666, NULL, store_event ), 
-    __ATTR( data_call, 0666, NULL, store_event ), 
-    __ATTR( vt_call, 0666, NULL, store_event ), 
-    __ATTR( camera_preview, 0666, NULL, store_event ), 
-    __ATTR( camera_recording, 0666, NULL, store_event ), 
-    __ATTR( video, 0666, NULL, store_event ), 
-    __ATTR( g_map, 0666, NULL, store_event ), 
-    __ATTR( e_book, 0666, NULL, store_event ), 
-    __ATTR( bt_call, 0666, NULL, store_event ), 
-    __ATTR( wap_browsing, 0666, NULL, store_event ), 
-    __ATTR( wifi_browsing, 0666, NULL, store_event ), 
-	__ATTR( browser, 0666, NULL, store_event ), 
-    __ATTR( game, 0666, NULL, store_event ), 
+    __ATTR( mp3, 0664, NULL, store_event ), 
+    __ATTR( talk_wcdma, 0664, NULL, store_event ), 
+    __ATTR( talk_gsm, 0664, NULL, store_event ), 
+    __ATTR( data_call, 0664, NULL, store_event ), 
+    __ATTR( vt_call, 0664, NULL, store_event ), 
+    __ATTR( camera_preview, 0664, NULL, store_event ), 
+    __ATTR( camera_recording, 0664, NULL, store_event ), 
+    __ATTR( video, 0664, NULL, store_event ), 
+    __ATTR( g_map, 0664, NULL, store_event ), 
+    __ATTR( e_book, 0664, NULL, store_event ), 
+    __ATTR( bt_call, 0664, NULL, store_event ), 
+    __ATTR( wap_browsing, 0664, NULL, store_event ), 
+    __ATTR( wifi_browsing, 0664, NULL, store_event ), 
+	__ATTR( browser, 0664, NULL, store_event ), 
+    __ATTR( game, 0664, NULL, store_event ), 
     /* END of Event logging */
 
     __ATTR( batt_vol, 0644, show_batt_vol, NULL ),
@@ -294,9 +303,9 @@ static struct kobj_attribute batt_sysfs_testmode[] = {
     __ATTR( batt_temp_adc, 0644, show_batt_temp_adc, NULL ),
     __ATTR( batt_v_f_adc, 0644, show_batt_v_f_adc, NULL ),
     __ATTR( batt_capacity, 0644, show_batt_capacity, NULL ),
-    __ATTR( batt_fuelgauge_reset, 0644, do_batt_fuelgauge_reset, NULL ),
-    __ATTR( batt_monitor_temp, 0777, show_batt_monitor_temp, store_batt_monitor_temp ),
-    __ATTR( batt_boot_complete, 0777, NULL, store_batt_boot_complete ),
+    __ATTR( batt_fuelgauge_reset, 0644, do_batt_fuelgauge_reset, store_batt_fuelgauge_reset ),
+    __ATTR( batt_monitor_temp, 0664, show_batt_monitor_temp, store_batt_monitor_temp ),
+    __ATTR( batt_boot_complete, 0664, NULL, store_batt_boot_complete ),
     __ATTR( fg_soc, 0644, show_batt_capacity, NULL ),
     __ATTR( batt_temp_check, 0644, show_batt_temp_check, NULL ),
     __ATTR( batt_full_check, 0644, show_batt_full_check, NULL ),    
@@ -701,6 +710,7 @@ static int t2adc_to_temperature( int value, int channel )
 
 static int do_fuelgauge_reset( void )
 {
+	printk("do_fuelgauge_reset\n");
     fuelgauge_quickstart();
     return 1;
 }

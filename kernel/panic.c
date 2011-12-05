@@ -46,6 +46,11 @@ EXPORT_SYMBOL(panic_notifier_list);
 long (*panic_blink)(long time);
 EXPORT_SYMBOL(panic_blink);
 
+
+#ifdef CONFIG_SAMSUNG_KERNEL_DEBUG
+static int prevent_panic_recursive_loop = 0;
+#endif
+
 static void panic_blink_one_second(void)
 {
 	static long i = 0, end;
@@ -325,13 +330,17 @@ EXPORT_SYMBOL(kernel_sec_get_mmu_reg_dump);
 void kernel_sec_save_final_context(void)
 {
 	if (kernel_sec_get_mmu_reg_dump(&kernel_sec_mmu_reg_dump) < 0) {
+#ifdef CONFIG_DEBUG_BUGVERBOSE
 		printk(KERN_EMERG
 		       "(kernel_sec_save_final_context) kernel_sec_get_mmu_reg_dump faile.\n");
+#endif
 	}
 	kernel_sec_get_core_reg_dump(&kernel_sec_core_reg_dump);
 
+#ifdef CONFIG_DEBUG_BUGVERBOSE
 	printk(KERN_EMERG
 	       "(kernel_sec_save_final_context) Final context was saved before the system reset.\n");
+#endif
 }
 
 EXPORT_SYMBOL(kernel_sec_save_final_context);
@@ -371,15 +380,23 @@ NORET_TYPE void panic(const char * fmt, ...)
 
 	console_verbose();
 	bust_spinlocks(1);
+#ifdef CONFIG_SAMSUNG_KERNEL_DEBUG
+	if(prevent_panic_recursive_loop > 0)
+		goto _kernel_sec_save_final_context;
+
+	prevent_panic_recursive_loop++;
+#endif
+
 	va_start(args, fmt);
 	vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
-	printk(KERN_EMERG "Kernel panic - not syncing: %s\n",buf);
 #ifdef CONFIG_DEBUG_BUGVERBOSE
+	printk(KERN_EMERG "Kernel panic - not syncing: %s\n",buf);
 	dump_stack();
 #endif
 
 #ifdef CONFIG_SAMSUNG_KERNEL_DEBUG
+_kernel_sec_save_final_context:
 	kernel_sec_save_final_context();
 
 	flush_cache_all();

@@ -1349,8 +1349,8 @@ static int __init omap2_system_dma_init_dev(struct omap_hwmod *oh, void *user)
 	p->enable_lnk		= omap2_enable_lnk;
 	p->disable_lnk		= omap2_disable_lnk;
 	p->set_dma_chain_ch	= set_dma_chain_ch;
-	p->dma_context_save	= omap2_dma_context_save;
-	p->dma_context_restore	= omap2_dma_context_restore;
+//	p->dma_context_save	= omap2_dma_context_save;
+//	p->dma_context_restore	= omap2_dma_context_restore;
 	p->clear_lch_regs	= NULL;
 	p->get_gdma_dev		= NULL;
 	p->set_gdma_dev		= NULL;

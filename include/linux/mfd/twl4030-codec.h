@@ -308,6 +308,13 @@ typedef enum{
 #endif
 }twl4030_path_mode; 
 
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )
+typedef enum{
+	VOIP_MAIN_ON=15,  
+	VOIP_MAIN_OFF=16,
+}voip_main_onoff;
+#endif
+    
 /* TWL4030 codec resource IDs */
 typedef struct {
     unsigned char reg;
@@ -340,4 +347,8 @@ extern int get_sec_gain_test_mode(void);
 #define GAIN_INIT_MUSIC_SPK	-11
 #define GAIN_INIT_MUSIC_EAR	-12
 //]
+
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )
+#define MAIN_MIC_BIAS_GPIO OMAP_GPIO_MICBIAS_EN
+#endif
 #endif	/* End of __TWL4030_CODEC_H__ */

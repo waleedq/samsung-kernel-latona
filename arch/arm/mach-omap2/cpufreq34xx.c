@@ -82,16 +82,16 @@ static u32 omap34xx_opp_def_size = ARRAY_SIZE(omap34xx_opp_def_list);
 
 static struct omap_opp_def __initdata omap36xx_opp_def_list[] = {
 	/* MPU OPP1 - OPP50 */
-	OMAP_OPP_DEF("mpu", true,  300000000,  1025000), //     1000000), 
+	OMAP_OPP_DEF("mpu", true,  300000000,  1025000), 
 	/* MPU OPP2 - OPP100 */
-	OMAP_OPP_DEF("mpu", true,  600000000,  1200000),    // 1162500),
+	OMAP_OPP_DEF("mpu", true,  600000000,  1200000),   
 	/* MPU OPP3 - OPP-Turbo */
-	OMAP_OPP_DEF("mpu", true,  800000000,   1330000), // 1300000),
+	OMAP_OPP_DEF("mpu", true,  800000000,   1330000),
 	/* MPU OPP4 - OPP-SB */
-	OMAP_OPP_DEF("mpu", true,  1000000000, 1387500), //  1350000
+	OMAP_OPP_DEF("mpu", true,  1000000000, 1387500),
 
 	/* L3 OPP1 - OPP50 */
-	OMAP_OPP_DEF("l3_main", false, 100000000, 930000),           // SR VDD FIX
+	OMAP_OPP_DEF("l3_main", false, 100000000, 930000),     
 	/* L3 OPP2 - OPP100, OPP-Turbo, OPP-SB */
 	OMAP_OPP_DEF("l3_main", true, 200000000, 1162500),
 

@@ -631,6 +631,10 @@ static int ispccdc_config_outlineoffset(struct isp_ccdc_device *isp_ccdc,
 		isp_reg_writel(dev, (offset & 0xFFFF),
 			       OMAP3_ISP_IOMEM_CCDC, ISPCCDC_HSIZE_OFF);
 	} else {
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+		isp_reg_writel(dev,672,
+				OMAP3_ISP_IOMEM_CCDC, ISPCCDC_HSIZE_OFF);
+#endif
 		DPRINTK_ISPCCDC("ISP_ERR : Offset should be in 32 byte"
 				" boundary\n");
 		return -EINVAL;
@@ -1071,7 +1075,11 @@ int ispccdc_s_pipeline(struct isp_ccdc_device *isp_ccdc,
 		OMAP3_ISP_IOMEM_CCDC,
 		ISPCCDC_HORZ_INFO);
 	ispccdc_config_outlineoffset(isp_ccdc, pipe->ccdc_out_w * 2, 0, 0);
-	
+
+#if 0
+	printk("[%s:%d] pipe->ccdc_out_h : %d, pipc->ccdc_out_w : %d, sensor_index = %d", 
+	      __func__, __LINE__,pipe->ccdc_out_h, pipe->ccdc_out_w, sensor_index);
+#endif
 	if(pipe->ccdc_out_h == 144 && pipe->ccdc_out_w == 176 && sensor_index == 2)
 	{
 		isp_reg_writel(dev,(((pipe->ccdc_out_h - 10) &
@@ -1091,7 +1099,19 @@ int ispccdc_s_pipeline(struct isp_ccdc_device *isp_ccdc,
 				ISPCCDC_VDINT_1_SHIFT),
 			       OMAP3_ISP_IOMEM_CCDC,
 			       ISPCCDC_VDINT);
-	}	
+	}
+#if 0 /* For the test */
+	else if(pipe->ccdc_out_h == 480 && pipe->ccdc_out_w == 800 && sensor_index == 1)
+	{
+		isp_reg_writel(dev,(((pipe->ccdc_out_h - 90) &
+				 ISPCCDC_VDINT_0_MASK) <<
+				ISPCCDC_VDINT_0_SHIFT) |
+			       ((ISPCCDC_VDINT_1_MASK) <<
+				ISPCCDC_VDINT_1_SHIFT),
+			       OMAP3_ISP_IOMEM_CCDC,
+			       ISPCCDC_VDINT);
+	}
+#endif
 	else if(pipe->ccdc_out_h == 720 && pipe->ccdc_out_w == 1280)
 	{
 		isp_reg_writel(dev,(((pipe->ccdc_out_h - 100) &

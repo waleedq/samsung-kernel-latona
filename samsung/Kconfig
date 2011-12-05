@@ -71,16 +71,16 @@ menu "GPS Support"
 source "samsung/gps/Kconfig"
 endmenu
 
-#menu "ROHM Light Sensor Support"
-#source "samsung/bh1721/Kconfig"
-#endmenu
+menu "ROHM Light Sensor Support"
+source "samsung/bh1721/Kconfig"
+endmenu
 
-#menu "ST K3G Gyroscope Sensor Support"
-#source "samsung/k3g/Kconfig"
-#endmenu
+menu "ST K3G Gyroscope Sensor Support"
+source "samsung/k3g/Kconfig"
+endmenu
 
-#menu "Bosch BMA023 Accelerometer Support"
-#source "samsung/bma023/Kconfig"
-#endmenu
+menu "Bosch BMA023 Accelerometer Support"
+source "samsung/bma023/Kconfig"
+endmenu
 
 endmenu

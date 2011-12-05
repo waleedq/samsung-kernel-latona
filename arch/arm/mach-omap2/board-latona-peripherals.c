@@ -824,6 +824,7 @@ static struct twl4030_gpio_platform_data omap_board_gpio_data = {
 	.irq_base	= TWL4030_GPIO_IRQ_BASE,
 	.irq_end	= TWL4030_GPIO_IRQ_END,
 	.setup		= omap_board_twl_gpio_setup,
+	.debounce       = 0x04,
 };
 static struct twl4030_usb_data board_usb_data = {
 	.usb_mode = T2_USB_MODE_ULPI,

@@ -420,6 +420,8 @@ static int cmc623_pwm_probe(struct platform_device *pdev)
 
 	bd->props.max_brightness = CMC623_PWM_MAX_INTENSITY;
 	bd->props.brightness = CMC623_PWM_DEFAULT_INTENSITY;
+	bd->props.power = FB_BLANK_UNBLANK;
+	bd->props.fb_blank = FB_BLANK_UNBLANK;
 
 	cmc623_pwm_gpio_init();
 

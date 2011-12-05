@@ -37,7 +37,7 @@
 static int debug;
 module_param(debug, int, 0644);
 
-bool stream_on = false;      //   720p_playback_fix
+
 
 MODULE_DESCRIPTION("helper module to manage video4linux buffers");
 MODULE_AUTHOR("Mauro Carvalho Chehab <mchehab@infradead.org>");
@@ -737,7 +737,7 @@ int videobuf_streamon(struct videobuf_queue *q)
 	unsigned long flags = 0;
 	int retval;
 
-	stream_on = true ;  //   720p_playback_fix
+	
 
 	mutex_lock(&q->vb_lock);
 	retval = -EBUSY;
@@ -782,7 +782,6 @@ int videobuf_streamoff(struct videobuf_queue *q)
 {
 	int retval;
 
-	stream_on = false ;  //   720p_playback_fix
 	mutex_lock(&q->vb_lock);
 	retval = __videobuf_streamoff(q);
 	mutex_unlock(&q->vb_lock);

@@ -41,8 +41,9 @@
 #include "prm.h"
 #include "cm.h"
 #include "pm.h"
-#define PAD_DEBUGGING
-#define PMIC_DEBUGGING
+#include "prm-regbits-34xx.h"
+//#define PAD_DEBUGGING
+//#define PMIC_DEBUGGING
 #ifdef CONFIG_SAMSUNG_KERNEL_DEBUG
 #endif /* CONFIG_SAMSUNG_KERNEL_DEBUG */
 
@@ -164,6 +165,7 @@ u32 enable_off_mode;
 u32 sleep_while_idle;
 u32 wakeup_timer_seconds;
 u32 wakeup_timer_milliseconds;
+
 u32 omap4_device_off_counter = 0;
 int pmd_clks_enable;
 int dpll_cascade_global_state;
@@ -773,14 +775,10 @@ static int option_set(void *data, u64 val)
 
 	if (option == &voltage_off_while_idle) {
 		if (voltage_off_while_idle)
-			{
-			printk("Set  voltage_off_while_idle\n");
-			printk( "%x\n ",omap_readl( 0x483072C0 )); // PRM_VP1_VOLTAGE
-			prm_set_mod_reg_bits(OMAP3430_SEL_OFF, OMAP3430_GR_MOD,
+			prm_set_mod_reg_bits(OMAP3430_SEL_OFF_MASK, OMAP3430_GR_MOD,
 					     OMAP3_PRM_VOLTCTRL_OFFSET);
-			}
 		else
-			prm_clear_mod_reg_bits(OMAP3430_SEL_OFF,
+			prm_clear_mod_reg_bits(OMAP3430_SEL_OFF_MASK,
 					       OMAP3430_GR_MOD,
 					       OMAP3_PRM_VOLTCTRL_OFFSET);
 	}
@@ -954,8 +952,7 @@ static int __init pm_dbg_init(void)
 				pm_dbg_dir, (void *)(i+1), &debug_reg_fops);
 
 		}
-   (void) debugfs_create_file("voltage_off_while_idle", S_IRUGO | S_IWUGO, d,
-				   &voltage_off_while_idle, &pm_dbg_option_fops);
+  
 	(void) debugfs_create_file("enable_off_mode", S_IRUGO | S_IWUGO, d,
 				   &enable_off_mode, &pm_dbg_option_fops);
 	(void) debugfs_create_file("sleep_while_idle", S_IRUGO | S_IWUGO, d,
@@ -967,6 +964,15 @@ static int __init pm_dbg_init(void)
 			&pm_dbg_option_fops);
 	(void) debugfs_create_file("enable_sr_vp_debug",  S_IRUGO | S_IWUGO, d,
 				   &enable_sr_vp_debug, &pm_dbg_option_fops);
+
+	/* Only enable for >= 3430 ES2.1 . Going to 0V on anything under
+      * ES2.1 will eventually cause a crash */
+       if (omap_rev() > OMAP3430_REV_ES2_0)
+              (void) debugfs_create_file("voltage_off_while_idle",
+                                          S_IRUGO | S_IWUGO, d,
+                                          &voltage_off_while_idle,
+                                        &pm_dbg_option_fops);
+
 #ifdef PMIC_DEBUGGING
 {
 	int ix = 0;

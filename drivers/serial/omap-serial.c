@@ -47,6 +47,12 @@
 
 static struct uart_omap_port *ui[OMAP_MAX_HSUART_PORTS];
 
+#if defined(CONFIG_KEYBOARD_P1)
+static bool g_keyboard =false;
+extern void send_keyevent(unsigned int key_code);
+static struct uart_omap_port *cons_port;
+#endif
+
 /* Forward declaration of functions */
 static void uart_tx_dma_callback(int lch, u16 ch_status, void *data);
 static void serial_omap_rxdma_poll(unsigned long uart_no);
@@ -218,6 +224,15 @@ receive_chars(struct uart_omap_port *up, unsigned int *status)
 				flag = TTY_FRAME;
 		}
 
+#if defined(CONFIG_KEYBOARD_P1)
+            if((up->port.line == 2)&&(g_keyboard))
+            {
+                if(ch != 0)
+                    send_keyevent(ch);
+                goto ignore_char;
+            }
+#endif
+
 		if (uart_handle_sysrq_char(&up->port, ch))
 			goto ignore_char;
 		uart_insert_char(&up->port, lsr, UART_LSR_OE, ch, flag);
@@ -253,7 +268,12 @@ static void transmit_chars(struct uart_omap_port *up)
 	}
 	count = up->port.fifosize / 4;
 	do {
+#if defined(CONFIG_KEYBOARD_P1)
+		if(!((up->port.line == 2)&&g_keyboard))
+#endif
+		{
 		serial_out(up, UART_TX, xmit->buf[xmit->tail]);
+		}
 		xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
 		up->port.icount.tx++;
 		if (uart_circ_empty(xmit)) {
@@ -619,6 +639,14 @@ static void serial_omap_shutdown(struct uart_port *port)
 		serial_out(up, UART_OMAP_SYSC, tmp); /* force-idle */
 	}
 	free_irq(up->port.irq, up);
+
+#if defined(CONFIG_KEYBOARD_P1)
+    if((up->port.line == 2)&&(g_keyboard))
+    {
+        send_keyevent(0);
+    }
+#endif
+
 	/* Set this to zero, would be initialsed
 	 * to the corrcet value at set_stermios.
 	 */
@@ -723,8 +751,16 @@ serial_omap_set_termios(struct uart_port *port, struct ktermios *termios,
 	/*
 	 * Ask the core to calculate the divisor for us.
 	 */
-
+#if defined(CONFIG_KEYBOARD_P1)
+	if((up->port.line == 2)&&g_keyboard)
+	{
+		baud = 9600;
+	}
+	else
+#endif
+	{
 	baud = uart_get_baud_rate(port, termios, old, 0, port->uartclk/13);
+	}
 	/* Added for the suporrt of DPLL, frequency changes
 	 * This value can be used to recalculate the DLLand
 	 * DLH values. If this function is not called for
@@ -1042,6 +1078,9 @@ static void
 serial_omap_console_write(struct console *co, const char *s,
 		unsigned int count)
 {
+#if defined(CONFIG_KEYBOARD_P1)
+    if(g_keyboard) return;
+#endif
 	struct uart_omap_port *up = serial_omap_console_ports[co->index];
 	unsigned long flags;
 	unsigned int ier;
@@ -1083,6 +1122,43 @@ serial_omap_console_write(struct console *co, const char *s,
 		spin_unlock(&up->port.lock);
 	local_irq_restore(flags);
 }
+
+#if defined(CONFIG_KEYBOARD_P1)
+void dock_keyboard_tx(u8 val)
+{
+	if(g_keyboard)
+	{
+		serial_out(cons_port, UART_TX, (int)val);
+	}
+}
+EXPORT_SYMBOL(dock_keyboard_tx);
+
+int change_console_baud_rate(int baud)
+{
+	cons_port = serial_omap_console_ports[2];
+
+	if(cons_port && &cons_port->port) {
+		if(baud == 9600)
+		{
+			g_keyboard = true;
+		}
+	    else
+		{
+			g_keyboard = false;
+		}
+	
+		uart_set_options(&cons_port->port, NULL, baud, 'n', 8, 'n');
+	
+		printk(KERN_DEBUG "[Keyboard] baud : %d\n", baud);
+		return 0;
+	}
+	else {
+		printk(KERN_DEBUG "[Keyboard] console is not valid\n");
+		return -1;
+	}
+}
+EXPORT_SYMBOL(change_console_baud_rate);
+#endif
 
 static int __init
 serial_omap_console_setup(struct console *co, char *options)
@@ -1559,6 +1635,15 @@ int omap_uart_active(int num, u32 timeout)
 	struct uart_omap_port *up = ui[num];
 	struct circ_buf *xmit;
 	unsigned int status;
+
+	/* Though when UART's initialised this can never happen,
+	 * but during initialisation, it can happen the "ui"
+	 * structure is not initialized and the timer kicks
+	 * in. This would result in a NULL value, resulting
+	 * in crash.
+	 */
+	if (up == NULL)
+		return 0;
 
 	/* Check for recent driver activity. If time delta from now
 	 * to last activty < "uart idle timeout" second keep clocks on.

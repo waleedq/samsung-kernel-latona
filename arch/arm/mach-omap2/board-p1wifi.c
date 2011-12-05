@@ -213,6 +213,18 @@ out:
 extern char sec_androidboot_mode[16];
 extern u32 sec_bootmode;
 
+/**
+ * @brief read 'sec.hw_rev=' parameter from the kernel cmd-line.
+ * @return 0;
+ */
+static __init int setup_hw_revision(char *opt)
+{
+	hw_revision= (u32) memparse(opt, &opt);
+	return 0;
+}
+
+__setup("sec.hw_rev=", setup_hw_revision);
+
 #ifdef CONFIG_SAMSUNG_KERNEL_DEBUG
 
 typedef struct {
@@ -450,12 +462,46 @@ static struct opp_frequencies opp_freq_add_table[] __initdata = {
 
 static void __init omap_board_init(void)
 {
+	u32 regval;
 	sec_common_init_early();
 
 	omap3_mux_init(sec_board_mux_ptr, OMAP_PACKAGE_CBP);
 	sec_mux_init_gpio_out();
 	sec_mux_set_wakeup_gpio();
 
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ))
+	omap_writew(0x11c, 0x48002a5a);
+	omap_writew(0x11c, 0x48002a58);
+	omap_writew(0x11c, 0x48002a56);
+	omap_writew(0x11c, 0x48002a54);
+	/*
+	regval = omap_readl(0x48002520);
+	omap_writel(regval | (0x1 << 8), 0x48002520);
+	printk("++++++++before +++++++++ CONTROL_PBIAS_LITE : %x\n", regval);
+	regval = omap_readl(0x48002520);
+	printk("++++++++after +++++++++ CONTROL_PBIAS_LITE : %x\n", regval);
+	*/
+	//omap_writew(0x7, 0x48002130); // UART_SEL
+	//omap_writew(0x7, 0x48002132); // UART_SEL
+	#define OMAP36XX_PBIASGPIO_IO_PWRDNZ  (1 << 6)
+	{
+		//[ changoh.heo 2010 for checing HW_REV1,Gpio 127 is special gpio.
+		u32 pbias_lte = 0, wkup_ctl =0, pad_gpio_127=0;
+		pbias_lte = omap_readl(0x48002520);//OMAP36XX_CONTROL_PBIAS_LITE
+		pbias_lte &= ~OMAP343X_PBIASLITEVMODE1;
+		pbias_lte |= OMAP343X_PBIASLITEPWRDNZ1;
+		omap_writel(pbias_lte, 0x48002520);
+
+		wkup_ctl = omap_readl(0x48002a5c);//OMAP36XX_CONTROL_WKUP_CTRL
+		wkup_ctl |= OMAP36XX_PBIASGPIO_IO_PWRDNZ;	
+		omap_writel(wkup_ctl, 0x48002a5c);
+	}
+
+	regval = omap_readl(0x48002520);
+	printk("++++++++after +++++++++ CONTROL_PBIAS_LITE : %x\n", regval);
+	regval = omap_readl(0x48002a5c);
+	printk("++++++++after +++++++++ OMAP36XX_CONTROL_WKUP_CTRL : %x\n", regval);
+#endif
 	sec_common_init();
 
 	msecure_init();

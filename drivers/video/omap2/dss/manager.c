@@ -33,8 +33,15 @@
 #include <plat/cpu.h>
 
 #include "dss.h"
-
+ 
 #define MAX_DSS_MANAGERS (cpu_is_omap44xx() ? 3 : 2)
+
+#define SKIP_FIRST_FRAME
+
+#ifdef SKIP_FIRST_FRAME
+extern int flg_720;
+extern int nDropCount;
+#endif
 
 static int num_managers;
 static struct list_head manager_list;
@@ -919,7 +926,22 @@ static int configure_overlay(enum omap_plane plane)
 		wb->dirty = false;
 		wb->shadow_dirty = true;
 	} else
+	{
+#ifdef SKIP_FIRST_FRAME
+	        if((plane != 0) && (flg_720) && nDropCount)
+	        {
+	               dispc_enable_plane(plane, 0); 
+	               printk("SFF:Drop frame %d\n",nDropCount);
+	               nDropCount--;            
+	        }
+	        else
+	        {  
+	        	dispc_enable_plane(plane, 1);
+	        } 
+#else
 		dispc_enable_plane(plane, 1);
+#endif
+	}
 
 	return 0;
 }
@@ -1754,6 +1776,11 @@ static int dss_mgr_disable(struct omap_overlay_manager *mgr)
 	return 0;
 }
 
+static bool dss_mgr_is_enabled(struct omap_overlay_manager *mgr)
+{
+	return dispc_is_channel_enabled(mgr->id);
+}
+
 static void omap_dss_add_overlay_manager(struct omap_overlay_manager *manager)
 {
 	++num_managers;
@@ -1814,6 +1841,7 @@ int dss_init_overlay_managers(struct platform_device *pdev)
 
 		mgr->enable = &dss_mgr_enable;
 		mgr->disable = &dss_mgr_disable;
+		mgr->is_enabled = &dss_mgr_is_enabled;
 
 		mgr->caps = OMAP_DSS_OVL_MGR_CAP_DISPC;
 

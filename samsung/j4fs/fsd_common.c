@@ -97,8 +97,13 @@ int fsd_read(j4fs_ctrl *ctl)
 		}
 
 		// File ID(inode number) is matched
+		#ifdef __KERNEL__
+		if( ((ctl->index + ctl->count + PAGE_SIZE-1)/PAGE_SIZE*PAGE_SIZE)
+			<= ((header->length + PAGE_SIZE-1)/PAGE_SIZE*PAGE_SIZE) )
+		#else
 		if( ((ctl->index + ctl->count + J4FS_BASIC_UNIT_SIZE-1)/J4FS_BASIC_UNIT_SIZE*J4FS_BASIC_UNIT_SIZE)
 			<= ((header->length + J4FS_BASIC_UNIT_SIZE-1)/J4FS_BASIC_UNIT_SIZE*J4FS_BASIC_UNIT_SIZE) )
+		#endif
 		{
 			matching_offset=(i>0)?ro_j4fs_header[i-1].link:device_info.j4fs_offset;
 			file_length=header->length;
@@ -164,8 +169,13 @@ int fsd_read(j4fs_ctrl *ctl)
 		}
 
 		// File ID is matched. we should read lastest object larger than ctl.index, so go ahead.
+		#ifdef __KERNEL__
+		if( ((ctl->index + ctl->count + PAGE_SIZE-1)/PAGE_SIZE*PAGE_SIZE)
+			<= ((header->length + PAGE_SIZE-1)/PAGE_SIZE*PAGE_SIZE) )
+		#else
 		if( ((ctl->index + ctl->count + J4FS_BASIC_UNIT_SIZE-1)/J4FS_BASIC_UNIT_SIZE*J4FS_BASIC_UNIT_SIZE)
 			<= ((header->length + J4FS_BASIC_UNIT_SIZE-1)/J4FS_BASIC_UNIT_SIZE*J4FS_BASIC_UNIT_SIZE) )
+		#endif
 		{
 			matching_offset=offset;
 			file_length=header->length;
@@ -319,6 +329,9 @@ int fsd_write(j4fs_ctrl *ctl)
 		T(J4FS_TRACE_ALWAYS,("%s %d: count is zero\n",__FUNCTION__, __LINE__));
 	#ifdef __KERNEL__
 		kfree(buf);
+	#ifdef J4FS_TRANSACTION_LOGGING
+		kfree(transaction);
+	#endif
 	#endif
 		return J4FS_SUCCESS;
 	}

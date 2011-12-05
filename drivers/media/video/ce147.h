@@ -27,7 +27,7 @@
 #ifndef CE147_H
 #define CE147_H
 
-#define CAM_CE147_DBG_MSG            1
+#define CAM_CE147_DBG_MSG            0
 #define CAM_CE147_I2C_DBG_MSG        0
 #define CAM_CE147_TUNE               0
 #define CE147_DRIVER_NAME            "ce147"

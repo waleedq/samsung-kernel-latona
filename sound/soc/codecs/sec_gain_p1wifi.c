@@ -77,7 +77,6 @@ void set_codec_gain(struct snd_soc_codec *codec, int mode, int device)
 				break;
 			case SPK: 
 			case SPK_HP: 
-			case EXTRA_SPEAKER:
 				if(!get_sec_gain_test_mode()){
 					//Comon
 					twl4030_write(codec, 0x12, music_spk_gain[0]); // ARXR2PGA (fine[0:5], Corse[6:7])
@@ -87,8 +86,13 @@ void set_codec_gain(struct snd_soc_codec *codec, int mode, int device)
 
 					twl4030_modify(codec, 0x25, music_spk_gain[4], PREDL_CTL_GAIN_MASK); //PREDL_CTL [4:5]
 					twl4030_modify(codec, 0x26, music_spk_gain[5], PREDL_CTL_GAIN_MASK); //PREDR_CTL[4:5]
-					if(device == SPK_HP)
+					if(device == SPK_HP){
+						twl4030_write(codec, 0x10, music_spk_gain[0]); // ARXR1PGA (fine[0:5], Corse[6:7])
+						twl4030_write(codec, 0x11, music_spk_gain[1]); // ARXL1PGA (fine[0:5], Corse[6:7])
+						twl4030_modify(codec, 0x19, 0x7B, ARX_APGA_GAIN_MASK); //ARXL1_APGA_CTL [3:7]
+						twl4030_modify(codec, 0x1a, 0x7B, ARX_APGA_GAIN_MASK); //ARXR1_APGA_CTL [3:7]						
 						twl4030_write(codec, 0x23, (0x3 << 2)|0x3); //HS_GAIN(L[0:1], R[2:3])
+					}
 
 					return ;
 				}
@@ -101,6 +105,32 @@ void set_codec_gain(struct snd_soc_codec *codec, int mode, int device)
 				else
 					twl4030_set_reg_from_file(codec, "/sdcard/external_sd/MusicSpk.ini", 0);
 #endif
+
+					if(device == SPK_HP){
+						twl4030_write(codec, 0x10, music_spk_gain[0]); // ARXR2PGA (fine[0:5], Corse[6:7])
+						twl4030_write(codec, 0x11, music_spk_gain[1]); // ARXL2PGA (fine[0:5], Corse[6:7])
+						twl4030_modify(codec, 0x19, 0x7B, ARX_APGA_GAIN_MASK); //ARXL2_APGA_CTL [3:7]
+						twl4030_modify(codec, 0x1a, 0x7B, ARX_APGA_GAIN_MASK); //ARXR2_APGA_CTL [3:7]						
+						twl4030_write(codec, 0x23, (0x3 << 2)|0x3); //HS_GAIN(L[0:1], R[2:3])
+					}
+
+	
+				break;
+			case EXTRA_SPEAKER:
+				if(!get_sec_gain_test_mode()) {
+					twl4030_write(codec, 0x12, 0x3F); // ARXR2PGA (fine[0:5], Corse[6:7])
+					twl4030_write(codec, 0x13, 0x3F); // ARXL2PGA (fine[0:5], Corse[6:7])
+					twl4030_modify(codec, 0x1b, 0x23, ARX_APGA_GAIN_MASK); //ARXL2_APGA_CTL [3:7]
+					twl4030_modify(codec, 0x1C, 0x23, ARX_APGA_GAIN_MASK); //ARXR2_APGA_CTL [3:7]
+
+					twl4030_modify(codec, 0x25, 0x28, PREDL_CTL_GAIN_MASK); //PREDL_CTL [4:5]
+					twl4030_modify(codec, 0x26, 0x28, PREDL_CTL_GAIN_MASK); //PREDR_CTL[4:5]
+					return ;
+				}		
+#if defined(APPLY_AUDIOTEST_APP) && defined(APPLY_GAIN_INIT_FROM_INI)
+				else
+					twl4030_set_reg_from_file(codec, "/sdcard/external_sd/MusicSpk.ini", 0);
+#endif				
 				break;
 			case OFF:
 				break;
@@ -388,7 +418,7 @@ void set_codec_gain(struct snd_soc_codec *codec, int mode, int device)
 				twl4030_write(codec, 0x21, 0x34);		//EAR_CTL [4:5] 0dB	
 #else
 				if(!get_sec_gain_test_mode())
-					twl4030_set_reg_from_file(codec, "/system/etc/audio/codec/VoiceCallRcv.ini", 1);
+					twl4030_set_reg_from_file(codec, "/system/etc/audio/codec/VtCallRcv.ini", 1);
 				else
 					twl4030_set_reg_from_file(codec, "/sdcard/external_sd/VtCallRcv.ini", 1);
 #endif				
@@ -419,7 +449,7 @@ void set_codec_gain(struct snd_soc_codec *codec, int mode, int device)
 			//	twl4030_write(codec, 0x26, 0x2c);
 #else
 				if(!get_sec_gain_test_mode())
-					twl4030_set_reg_from_file(codec, "/system/etc/audio/codec/VoiceCallSpk.ini", 2);
+					twl4030_set_reg_from_file(codec, "/system/etc/audio/codec/VtCallSpk.ini", 2);
 				else
 					twl4030_set_reg_from_file(codec, "/sdcard/external_sd/VtCallSpk.ini", 2);
 #endif				
@@ -446,7 +476,7 @@ void set_codec_gain(struct snd_soc_codec *codec, int mode, int device)
 				twl4030_write(codec, 0x23, (0x1 << 2) | 0x1); //HS_GAIN(L[0:1], R[2:3])
 #else
 				if(!get_sec_gain_test_mode())
-					twl4030_set_reg_from_file(codec, "/system/etc/audio/codec/VoiceCall3pEar.ini", 3);
+					twl4030_set_reg_from_file(codec, "/system/etc/audio/codec/VtCall3pEar.ini", 3);
 				else
 					twl4030_set_reg_from_file(codec, "/sdcard/external_sd/VtCall3pEar.ini", 3);
 #endif				
@@ -473,7 +503,7 @@ void set_codec_gain(struct snd_soc_codec *codec, int mode, int device)
 				twl4030_write(codec, 0x23, (0x1 << 2) | 0x1); //HS_GAIN(L[0:1], R[2:3])
 #else
 				if(!get_sec_gain_test_mode())
-					twl4030_set_reg_from_file(codec, "/system/etc/audio/codec/VoiceCall4pEar.ini", 3);
+					twl4030_set_reg_from_file(codec, "/system/etc/audio/codec/VtCall4pEar.ini", 3);
 				else
 					twl4030_set_reg_from_file(codec, "/sdcard/external_sd/VtCall4pEar.ini", 3);
 #endif	
@@ -483,7 +513,7 @@ void set_codec_gain(struct snd_soc_codec *codec, int mode, int device)
 				twl4030_write(codec, 0x1F, (0x5 << 4)| 0x5); //BTPGA(RX[0:3], Tx[4:7])
 #else
 				if(!get_sec_gain_test_mode())
-					twl4030_set_reg_from_file(codec, "/system/etc/audio/codec/VoiceCallBT.ini", 0);
+					twl4030_set_reg_from_file(codec, "/system/etc/audio/codec/VtCallBT.ini", 0);
 				else
 					twl4030_set_reg_from_file(codec, "/sdcard/external_sd/VtCallBT.ini", 0);
 #endif
@@ -499,6 +529,7 @@ void set_codec_gain(struct snd_soc_codec *codec, int mode, int device)
 			case OFF:
 				break;
 			case RCV: 
+#ifndef APPLY_AUDIOTEST_APP			
 				//TX Common
 				twl4030_write(codec, 0x48, (0x4 << 3) | 0x4); // ANAMIC_GAIN (L[0:2], R[3:5])
 				twl4030_write(codec, 0x0C, 0x08); //AVTXL2PGA [0:7]
@@ -511,10 +542,16 @@ void set_codec_gain(struct snd_soc_codec *codec, int mode, int device)
 				twl4030_modify(codec, 0x1C, (0xd << 3), ARX_APGA_GAIN_MASK); //ARXR2_APGA_CTL [3:7]
 
 				//RX depend
-				twl4030_modify(codec, 0x21, (0x3 << 4), EAR_CTL_GAIN_MASK); //EAR_CTL [4:5]				
-
+				twl4030_modify(codec, 0x21, (0x3 << 4), EAR_CTL_GAIN_MASK); //EAR_CTL [4:5]
+#else
+				if(!get_sec_gain_test_mode())
+					twl4030_set_reg_from_file(codec, "/system/etc/audio/codec/VoipCallRcv.ini", 1);
+				else
+					twl4030_set_reg_from_file(codec, "/sdcard/external_sd/VoipCallRcv.ini", 1);
+#endif
 				break;
 			case SPK: 
+#ifndef APPLY_AUDIOTEST_APP				
 				//TX Common
 				twl4030_write(codec, 0x48, (0x4 << 3) | 0x4); // ANAMIC_GAIN (L[0:2], R[3:5])
 				twl4030_write(codec, 0x0C, 0x08); //AVTXL2PGA [0:7]
@@ -529,9 +566,15 @@ void set_codec_gain(struct snd_soc_codec *codec, int mode, int device)
 				//RX depend output
 				twl4030_modify(codec, 0x25, (0x2 << 4), PREDL_CTL_GAIN_MASK); //PREDL_CTL [4:5]
 				twl4030_modify(codec, 0x26, (0x2 << 4), PREDL_CTL_GAIN_MASK); //PREDR_CTL[4:5]
-
+#else
+				if(!get_sec_gain_test_mode())
+					twl4030_set_reg_from_file(codec, "/system/etc/audio/codec/VoipCallSpk.ini",2);
+				else
+					twl4030_set_reg_from_file(codec, "/sdcard/external_sd/VoipCallSpk.ini", 2);
+#endif
 				break;
 			case HP3P: 
+#ifndef APPLY_AUDIOTEST_APP			
 				//TX Common
 				twl4030_write(codec, 0x48, 0x02); // ANAMIC_GAIN (L[0:2], R[3:5])
 				twl4030_write(codec, 0x0C, 0xD); //AVTXL2PGA [0:7]
@@ -545,7 +588,15 @@ void set_codec_gain(struct snd_soc_codec *codec, int mode, int device)
 
 				//RX depend output
 				twl4030_write(codec, 0x23, (0x1 << 2)|0x1); //HS_GAIN(L[0:1], R[2:3])
+#else
+				if(!get_sec_gain_test_mode())
+					twl4030_set_reg_from_file(codec, "/system/etc/audio/codec/VoipCall3pEar.ini", 0);
+				else
+					twl4030_set_reg_from_file(codec, "/sdcard/external_sd/VoipCall3pEar.ini", 0);
+#endif				
+				break;
 			case HP4P: 
+#ifndef APPLY_AUDIOTEST_APP			
 				//TX Common
 				twl4030_write(codec, 0x48, 0x02); // ANAMIC_GAIN (L[0:2], R[3:5])
 				twl4030_write(codec, 0x0C, 0xD); //AVTXL2PGA [0:7]
@@ -559,6 +610,12 @@ void set_codec_gain(struct snd_soc_codec *codec, int mode, int device)
 
 				//RX depend output
 				twl4030_write(codec, 0x23, (0x1 << 2)|0x1); //HS_GAIN(L[0:1], R[2:3])
+#else
+				if(!get_sec_gain_test_mode())
+					twl4030_set_reg_from_file(codec, "/system/etc/audio/codec/VoipCall4pEar.ini",0);
+				else
+					twl4030_set_reg_from_file(codec, "/sdcard/external_sd/VoipCall4pEar.ini", 0);
+#endif			
 				break;
 			case BT: 
 				printk("voip bt not supported\n");
@@ -729,8 +786,10 @@ static int twl4030_set_reg_from_file(struct snd_soc_codec *codec, char* filename
 
 	if(mode >= 0)
 	for(i=0 ; i<nIndex ; i++){
-//		printk( "[SKLee] Get data [%d] = 0x%x, 0x%x!!\n",i, regFromFile[i].reg,regFromFile[i].val );
-		if((twl4030_get_codec_mode() != VOICE_CALL) && (twl4030_get_codec_mode() != VT_CALL)){
+		//printk( "[SKLee] Get data [%d] = 0x%x, 0x%x!!\n",i, regFromFile[i].reg,regFromFile[i].val );
+		if((twl4030_get_codec_mode() != VOICE_CALL) 
+			&& (twl4030_get_codec_mode() != VT_CALL) 
+			&& (twl4030_get_codec_mode() != VOIP_CALL)){
 			if((mode == 1) && (regFromFile[i].reg == 0x21))
 				regFromFile[i].val = (regFromFile[i].val & 0xf0);
 			else if((mode == 2) && (regFromFile[i].reg == 0x26))
@@ -757,7 +816,7 @@ static int twl4030_set_reg_from_file(struct snd_soc_codec *codec, char* filename
 		twl4030_write(codec, regFromFile[i].reg, regFromFile[i].val);
 		
 	}
-	#if defined(APPLY_GAIN_INIT_FROM_INI)
+#if defined(APPLY_GAIN_INIT_FROM_INI)
 	else
 		for(i=0 ; i<nIndex ; i++){
 			if(mode == GAIN_INIT_MUSIC_SPK){
@@ -768,7 +827,7 @@ static int twl4030_set_reg_from_file(struct snd_soc_codec *codec, char* filename
 				printk("music_ear_gain : index %d, value 0x%x\n", i,  music_ear_gain[i]);
 			}
 		}
-	#endif
+#endif // APPLY_GAIN_INIT_FROM_INI
 	kfree( pBuf );
 	
 	return nFileSize;

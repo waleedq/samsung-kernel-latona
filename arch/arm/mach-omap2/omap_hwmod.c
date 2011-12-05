@@ -60,6 +60,8 @@
 /* Name of the OMAP hwmod for the MPU */
 #define MPU_INITIATOR_NAME		"mpu"
 
+static bool dss_correction = false ; 
+
 /* omap_hwmod_list contains all registered struct omap_hwmods */
 static LIST_HEAD(omap_hwmod_list);
 
@@ -1285,6 +1287,7 @@ static int _setup(struct omap_hwmod *oh, void *data)
       	{
       	   pr_debug( " map_hwmod: %s not  idling\n", oh->name);
           skip_setup_idle = 1;
+          dss_correction = true ;
       	}
 
 	//OMAPS00239528 End 
@@ -1549,6 +1552,12 @@ int omap_hwmod_enable(struct omap_hwmod *oh)
 
 	if (!oh)
 		return -EINVAL;
+
+     if((strcmp(oh->name,"dss")==0) && dss_correction) 
+      	{
+      	   dss_correction = false ;
+          return 0;
+      	}
 
 	mutex_lock(&omap_hwmod_mutex);
 	r = _omap_hwmod_enable(oh);

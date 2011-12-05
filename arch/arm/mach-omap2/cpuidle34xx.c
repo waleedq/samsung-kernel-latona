@@ -60,7 +60,7 @@ struct omap3_processor_cx {
 
 struct omap3_processor_cx omap3_power_states[OMAP3_MAX_STATES];
 struct omap3_processor_cx current_cx_state;
-struct powerdomain *mpu_pd, *core_pd;
+struct powerdomain *mpu_pd, *core_pd, *cam_pd;
 
 /*
  * The latencies/thresholds for various C states have
@@ -69,6 +69,8 @@ struct powerdomain *mpu_pd, *core_pd;
  * the best power savings) used on boards which do not
  * pass these details from the board file.
  */
+ #if 0
+ 
 static struct cpuidle_params cpuidle_params_table[] = {
 	/* C1 */
 	{1, 2, 2, 5},
@@ -85,7 +87,25 @@ static struct cpuidle_params cpuidle_params_table[] = {
 	/* C7 */
 	{1, 10000, 30000, 300000},
 };
+ 
+#endif 
 
+ static struct cpuidle_params cpuidle_params_table[] = {
+ 	/* C1 */
+ 	{1, 0, 12, 15},	
+ /* C2 */	
+ 	{1, 0, 18, 20},
+ /* C3 */	
+ 	{1, 50, 50, 300},
+ /* C4 */	
+ 	{1, 1500, 1800, 4000},	
+ /* C5 */	
+ 	{1, 2500, 7500, 12000},
+ 	/* C6 */	
+ 	{1, 3000, 8500, 15000},
+ 	/* C7 */	
+ 	{1, 10000, 30000, 300000},
+ 	};
 static int omap3_idle_bm_check(void)
 {
 	if (!omap3_can_sleep())
@@ -120,19 +140,14 @@ static int omap3_enter_idle(struct cpuidle_device *dev,
 {
 	struct omap3_processor_cx *cx = cpuidle_get_statedata(state);
 	struct timespec ts_preidle, ts_postidle, ts_idle;
-	u32 mpu_state = cx->mpu_state, core_state = cx->core_state;
+	u32 mpu_state = cx->mpu_state, core_state = cx->core_state, cam_state = 0;
 	/* modified for mp3 current -- begin */
 	u32 mpu_prev,core_prev =0 ;
 	current_cx_state = *cx;
+	int requested=cx->type;
+	static int cam_deny = 0;
 
-	if(audio_on)
-		{
-		cx = (omap3_power_states+OMAP3_STATE_C2);
-		mpu_state = cx->mpu_state;
-		core_state = cx->core_state;
-		current_cx_state = *cx;
-		//printk("audio_on %d  mpu_state %d \n",cx->type,mpu_state);
-		}
+	
 	/* modified for mp3 current -- end*/
 	/* Used to keep track of the total time in idle */
 	getnstimeofday(&ts_preidle);
@@ -146,6 +161,12 @@ static int omap3_enter_idle(struct cpuidle_device *dev,
 	if (omap_irq_pending() || need_resched())
 		goto return_sleep_time;
 
+      /* Keep  CAM domain active during ISP usecases */
+	if(( front_cam_in_use || back_cam_in_use || (stream_on)) ){
+		pwrdm_for_each_clkdm(cam_pd, _cpuidle_deny_idle);
+		cam_deny = 1 ;
+	}
+
 	if (cx->type == OMAP3_STATE_C1) {
 		pwrdm_for_each_clkdm(mpu_pd, _cpuidle_deny_idle);
 		pwrdm_for_each_clkdm(core_pd, _cpuidle_deny_idle);
@@ -158,6 +179,18 @@ static int omap3_enter_idle(struct cpuidle_device *dev,
 		pwrdm_for_each_clkdm(mpu_pd, _cpuidle_allow_idle);
 		pwrdm_for_each_clkdm(core_pd, _cpuidle_allow_idle);
 	}
+
+	/* Keep  CAM domain active during ISP usecases */
+      if(cam_deny){
+      		pwrdm_for_each_clkdm(cam_pd, _cpuidle_allow_idle);
+		cam_deny = 0;
+	}
+
+     core_state = pwrdm_read_prev_pwrst(core_pd);
+     mpu_state = pwrdm_read_prev_pwrst(mpu_pd);
+     cam_state = pwrdm_read_prev_pwrst(cam_pd);
+		
+    //printk(KERN_INFO "requested C%d, actual core=%d, mpu=%d cam = %d \n", requested, core_state, mpu_state,cam_state);
 
 return_sleep_time:
 	getnstimeofday(&ts_postidle);
@@ -443,6 +476,7 @@ int __init omap3_idle_init(void)
 
 	mpu_pd = pwrdm_lookup("mpu_pwrdm");
 	core_pd = pwrdm_lookup("core_pwrdm");
+	cam_pd =  pwrdm_lookup("cam_pwrdm");
 
 	omap_init_power_states();
 	cpuidle_register_driver(&omap3_idle_driver);

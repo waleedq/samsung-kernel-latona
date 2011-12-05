@@ -23,7 +23,7 @@
 
 #include "yas_cfg.h"
 
-#define YAS_VERSION                        "4.0.1"
+#define YAS_VERSION                        "4.0.3"
 
 /* -------------------------------------------------------------------------- */
 /*  Typedef definition                                                        */

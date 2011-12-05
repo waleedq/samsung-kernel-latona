@@ -55,11 +55,13 @@
 #include "cm.h"
 #include "cm-regbits-34xx.h"
 #include "prm-regbits-34xx.h"
+#include "mux34xx.h"
 
 #include "prm.h"
 #include "pm.h"
 #include "sdrc.h"
 
+static struct clk *mbox_ick_handle;
 static int android_suspend = 0 ;
 
 /* modified for mp3 current -- begin */
@@ -77,13 +79,19 @@ static spinlock_t fleeting_lock = SPIN_LOCK_UNLOCKED;
 #define PER_WAKEUP_ERRATA_i582			(1 << 0)
 static u16 pm34xx_errata;
 #define IS_PM34XX_ERRATA(id)			(pm34xx_errata & (id))
-  #define OMAP36XX_RTA_DISABLE		0x0
-  #define OMAP36XX_CONTROL_MEM_RTA_CTRL	0x40C
+#define OMAP36XX_RTA_DISABLE	  	    0x0
+#define OMAP36XX_CONTROL_MEM_RTA_CTRL	0x40C
+
+#define OMAP3430_CM_SLEEPDEP_PER_EN_MPU                (1 << 1)
+#define OMAP3430_CM_SLEEPDEP_PER_EN_IVA2               (1 << 2)
 
   
+/* Secure ram save size - store the defaults */
 static struct omap3_secure_copy_data secure_copy_data = {
 	.size = 0xF040,
+	/*60K + 64 Bytes header EMU/HS devices */
 };
+
 struct power_state {
 	struct powerdomain *pwrdm;
 	u32 next_state;
@@ -116,7 +124,8 @@ static void omap3_enable_io_chain(void)
 		/* Do a readback to assure write has been done */
 		prm_read_mod_reg(WKUP_MOD, PM_WKEN);
 
-		while (!(prm_read_mod_reg(WKUP_MOD, PM_WKEN) &
+		
+		while (!(prm_read_mod_reg(WKUP_MOD, PM_WKST) &
 			 OMAP3430_ST_IO_CHAIN_MASK)) {
 			timeout++;
 			if (timeout > 1000) {
@@ -124,8 +133,7 @@ static void omap3_enable_io_chain(void)
 				       "activation failed.\n");
 				return;
 			}
-			prm_set_mod_reg_bits(OMAP3430_ST_IO_CHAIN_MASK,
-					     WKUP_MOD, PM_WKEN);
+			
 		}
 	}
 }
@@ -157,26 +165,45 @@ static void omap3_core_save_context(void)
 	omap_ctrl_writel(omap_ctrl_readl(OMAP343X_PADCONF_ETK_D14),
 		OMAP343X_CONTROL_MEM_WKUP + 0x2a0);
 
+	/*
+	 * override the value saved in scratchpad memory, errata i583
+	 */
+	if (omap_rev() <= OMAP3630_REV_ES1_1)
+		omap_ctrl_writew(0x1f, OMAP343X_CONTROL_MEM_WKUP +
+			OMAP3_CONTROL_PADCONF_SDRC_CKE1_OFFSET);
+
 	/* Save the Interrupt controller context */
 	omap_intc_save_context();
 	/* Save the GPMC context */
 	omap3_gpmc_save_context();
 	/* Save the system control module context, padconf already save above*/
 	omap3_control_save_context();
-	omap_dma_global_context_save();
+	omap2_dma_context_save();
+
 }
 
 static void omap3_core_restore_context(void)
 {
+	if (omap_rev() <= OMAP3630_REV_ES1_1) {
+		/*
+		 * errata i583 workaround, safe transition sequence for CKE1:
+		 */
+		omap_ctrl_writew(0x1b, OMAP2_CONTROL_PADCONFS +
+			OMAP3_CONTROL_PADCONF_SDRC_CKE1_OFFSET);
+		omap_ctrl_writew(0x19, OMAP2_CONTROL_PADCONFS +
+			OMAP3_CONTROL_PADCONF_SDRC_CKE1_OFFSET);
+		omap_ctrl_writew(0x18, OMAP2_CONTROL_PADCONFS +
+			OMAP3_CONTROL_PADCONF_SDRC_CKE1_OFFSET);
+	}
 	/* Restore the control module context, padconf restored by h/w */
 	omap3_control_restore_context();
 	/* Restore the GPMC context */
 	omap3_gpmc_restore_context();
 	/* Restore the interrupt controller context */
 	omap_intc_restore_context();
-	omap_dma_global_context_restore();
-
+       omap2_dma_context_restore();
 }
+
 /**
  * omap3_secure_copy_data_set() - set up the secure ram copy size
  * @data - platform specific customization
@@ -320,6 +347,7 @@ static irqreturn_t prcm_interrupt_handler (int irq, void *dev_id)
 {
 	u32 irqenable_mpu, irqstatus_mpu;
 	int c = 0;
+	int ct = 0;                //OMAPS00241975
 
 	irqenable_mpu = prm_read_mod_reg(OCP_MOD,
 					 OMAP3_PRM_IRQENABLE_MPU_OFFSET);
@@ -331,13 +359,15 @@ static irqreturn_t prcm_interrupt_handler (int irq, void *dev_id)
 		if (irqstatus_mpu & (OMAP3430_WKUP_ST_MASK |
 				     OMAP3430_IO_ST_MASK)) {
 			c = _prcm_int_handle_wakeup();
+			ct++;              //OMAPS00241975
 
 			/*
 			 * Is the MPU PRCM interrupt handler racing with the
 			 * IVA2 PRCM interrupt handler ?
 			 */
-			WARN(c == 0, "prcm: WARNING: PRCM indicated MPU wakeup "
-			     "but no wakeup sources are marked\n");
+			WARN(!c && (ct == 1), "prcm: WARNING: PRCM indicated "        
+				"MPU wakeup but no wakeup sources are "
+				"marked\n");                                //OMAPS00241975
 		} else {
 			/* XXX we need to expand our PRCM interrupt handler */
 			WARN(1, "prcm: WARNING: PRCM interrupt received, but "
@@ -390,27 +420,11 @@ void omap_dpll3_errat_wa(int disable)
 {
 	/* enable/disable autoidle */
 	if (!disable)
-		{
-		//printk("Denyyyy idle \n");
 		cm_rmw_mod_reg_bits(OMAP3430_AUTO_CORE_DPLL_MASK,
 					0x1, PLL_MOD, CM_AUTOIDLE);
-		//omap2_clkdm_deny_idle(mpu_pwrdm->pwrdm_clkdms[0]);
-		//omap_writel(0x0,0x48004948);
-
-		audio_on = 1;
-		
-		}
-	else
-		{
-		//printk("allowwww idle \n");
+	else		
 		cm_rmw_mod_reg_bits(OMAP3430_AUTO_CORE_DPLL_MASK,
 					0x0, PLL_MOD, CM_AUTOIDLE);
-		//omap2_clkdm_allow_idle(mpu_pwrdm->pwrdm_clkdms[0]);
-
-		//omap_writel(0x3,0x48004948);
-		audio_on = 0;
-		
-		}
 	return;
 }
 EXPORT_SYMBOL(omap_dpll3_errat_wa);
@@ -431,6 +445,8 @@ void omap_sram_idle(void)
 	int core_prev_state, per_prev_state;
 	u32 sdrc_pwr = 0;
 	int per_state_modified = 0;
+	int per_context_saved = 0;
+
 	int dss_next_state = PWRDM_POWER_ON;
 	int dss_state_modified = 0;
 //idle current optimisation 	
@@ -503,13 +519,10 @@ void omap_sram_idle(void)
 				per_state_modified = 1;
 			}
 		}
-		if (per_next_state == PWRDM_POWER_OFF){
-                		  
-				omap2_gpio_prepare_for_idle(true,android_suspend);
-				
-		}
-		else
-			omap2_gpio_prepare_for_idle(false,android_suspend);
+		if (per_next_state == PWRDM_POWER_OFF)
+			 per_context_saved = 1;
+		
+			omap2_gpio_prepare_for_idle(per_context_saved);
 		    omap_uart_prepare_idle(2);
 		}
 
@@ -524,26 +537,18 @@ void omap_sram_idle(void)
 					0x1, PLL_MOD, CM_AUTOIDLE);
 	}
 	omap3_intc_prepare_idle();
-//Change for OMAPS00241246 
-//idle current optimisation 	
-if(cam_in_use)    
-//	if((cam_in_use) || (stream_on))    //   720p_playback_fix
-		{
-		if (pwrdm_read_pwrst(cam_pwrdm) == PWRDM_POWER_ON)
-			omap2_clkdm_deny_idle(mpu_pwrdm->pwrdm_clkdms[0]);
-		}
-//idle current optimisation 
-//Change for OMAPS00241246 
+
+	
 	/* CORE */
 	if (core_next_state < PWRDM_POWER_ON) {
 		omap_uart_prepare_idle(0);
 		omap_uart_prepare_idle(1);
 		if (core_next_state == PWRDM_POWER_OFF) {
-	           prm_set_mod_reg_bits(OMAP3430_AUTO_OFF,
+	           prm_set_mod_reg_bits(OMAP3430_AUTO_OFF_MASK,
 					      OMAP3430_GR_MOD,
 					     OMAP3_PRM_VOLTCTRL_OFFSET); 
 			omap3_core_save_context();
-			omap3_prcm_save_context();
+			omap3_cm_save_context();
 			/* Save MUSB context */
 			musb_context_save_restore(save_context);
 			
@@ -553,7 +558,7 @@ if(cam_in_use)
 			
 		}
 		else if (core_next_state == PWRDM_POWER_RET) {
-			prm_set_mod_reg_bits(OMAP3430_AUTO_RET,
+			prm_set_mod_reg_bits(OMAP3430_AUTO_RET_MASK,
 						OMAP3430_GR_MOD,
 						OMAP3_PRM_VOLTCTRL_OFFSET);
 			musb_context_save_restore(disable_clk);
@@ -608,7 +613,7 @@ if(cam_in_use)
 		core_prev_state = pwrdm_read_prev_pwrst(core_pwrdm);
 		if (core_prev_state == PWRDM_POWER_OFF) {
 			omap3_core_restore_context();
-			omap3_prcm_restore_context();
+			omap3_cm_restore_context();
 			omap3_sram_restore_context();
 			omap2_sms_restore_context();
 			/* Restore MUSB context */
@@ -624,7 +629,7 @@ if(cam_in_use)
 					       OMAP3430_GR_MOD,
 					       OMAP3_PRM_VOLTCTRL_OFFSET);
 		else if (core_next_state == PWRDM_POWER_RET)
-			prm_clear_mod_reg_bits(OMAP3430_AUTO_RET,
+			prm_clear_mod_reg_bits(OMAP3430_AUTO_RET_MASK,
 						OMAP3430_GR_MOD,
 						OMAP3_PRM_VOLTCTRL_OFFSET); //TEST
 	}
@@ -639,10 +644,9 @@ if(cam_in_use)
 	if (per_next_state < PWRDM_POWER_ON) {
 		omap_uart_resume_idle(2);
 		per_prev_state = pwrdm_read_prev_pwrst(per_pwrdm);
-		if ((per_prev_state == PWRDM_POWER_OFF)||(per_next_state == PWRDM_POWER_OFF))
-			omap2_gpio_resume_after_idle(true,android_suspend);
-		else
-			omap2_gpio_resume_after_idle(false,android_suspend);
+		
+		omap2_gpio_resume_after_idle(per_context_saved);
+
 		if (per_state_modified)
 			pwrdm_set_next_pwrst(per_pwrdm, PWRDM_POWER_OFF);
 		
@@ -669,7 +673,9 @@ if(cam_in_use)
 	}
 
 	/* Disable IO-PAD and IO-CHAIN wakeup */
-	if (core_next_state < PWRDM_POWER_ON) {
+
+	 if (per_next_state < PWRDM_POWER_ON ||
+                       core_next_state < PWRDM_POWER_ON) {
 		prm_clear_mod_reg_bits(OMAP3430_EN_IO_MASK, WKUP_MOD, PM_WKEN);
 		omap3_disable_io_chain();
 	}
@@ -1078,6 +1084,28 @@ static void __init prcm_setup_regs(void)
 	prm_write_mod_reg(0, OMAP3430_CAM_MOD, PM_WKDEP);
 	prm_write_mod_reg(0, OMAP3430_PER_MOD, PM_WKDEP);
 	if (omap_rev() > OMAP3430_REV_ES1_0) {
+		
+	/* This workaround is needed to prevent SGX and USBHOST from
+	* failing to transition to RET/OFF after a warm reset in OFF
+    * mode. Workaround sets a sleepdep of each of these domains
+    * with MPU, waits for a min 2 sysclk cycles and clears the
+    * sleepdep.
+     */
+
+             
+    	cm_write_mod_reg(OMAP3430_CM_SLEEPDEP_PER_EN_MPU,
+                            OMAP3430ES2_USBHOST_MOD, OMAP3430_CM_SLEEPDEP);
+       	cm_write_mod_reg(OMAP3430_CM_SLEEPDEP_PER_EN_MPU,
+             				OMAP3430ES2_SGX_MOD, OMAP3430_CM_SLEEPDEP);
+       
+       	udelay(100);
+       
+       	cm_write_mod_reg(0, OMAP3430ES2_USBHOST_MOD,
+             				OMAP3430_CM_SLEEPDEP);
+       	cm_write_mod_reg(0, OMAP3430ES2_SGX_MOD,
+             				OMAP3430_CM_SLEEPDEP);
+
+  
 		prm_write_mod_reg(0, OMAP3430ES2_SGX_MOD, PM_WKDEP);
 		prm_write_mod_reg(0, OMAP3430ES2_USBHOST_MOD, PM_WKDEP);
 	} else
@@ -1346,6 +1374,16 @@ static int __init pwrdms_setup(struct powerdomain *pwrdm, void *unused)
 	return set_pwrdm_state(pwrst->pwrdm, pwrst->next_state);
 }
 
+static int __init omap3_pm_early_init(void)
+{
+      /* set sys_off_mode active low */
+       prm_clear_mod_reg_bits(OMAP3430_OFFMODE_POL_MASK, OMAP3430_GR_MOD,
+                               OMAP3_PRM_POLCTRL_OFFSET);
+     return 0;
+}
+
+arch_initcall(omap3_pm_early_init);
+
 /*
  * Enable hw supervised mode for all clockdomains if it's
  * supported. Initiate sleep transition for other clockdomains, if
@@ -1434,59 +1472,27 @@ static int __init omap3_pm_init(void)
 	omap3_idle_init();
 
 	clkdm_add_wkdep(neon_clkdm, mpu_clkdm);
- /*
-  * REVISIT: This wkdep is only necessary when GPIO2-6 are enabled for
-  * IO-pad wakeup.	Otherwise it will unnecessarily waste power
-  * waking up PER with every CORE wakeup - see
-  * http://marc.info/?l=linux-omap&m=121852150710062&w=2
-*/
- 	clkdm_add_wkdep(per_clkdm, core_clkdm);
 
-	 if (IS_PM34XX_ERRATA(PER_WAKEUP_ERRATA_i582)) {
-	 /* Allow per to wakeup the system */
-	 if (cpu_is_omap34xx())
-		 clkdm_add_wkdep(per_clkdm, wkup_clkdm);
-	 }
- /*
-  * A part of the fix for errata 1.158.
-  * GPIO pad spurious transition (glitch/spike) upon wakeup
-  * from SYSTEM OFF mode. The remaining fix is in:
-  * omap3_gpio_save_context, omap3_gpio_restore_context.
-*/
- 	if (omap_rev() <= OMAP3430_REV_ES3_1)
-		 clkdm_add_wkdep(per_clkdm, wkup_clkdm);
 
- 	if (cpu_is_omap3630())
-		 pm34xx_errata |= RTA_ERRATA_i608;
- /*
-  * RTA is disabled during initialization as per errata i608
-  * it is safer to disable rta by the bootloader, but we would like
-  * to be doubly sure here and prevent any mishaps.
-  */
-  
- if (IS_PM34XX_ERRATA(RTA_ERRATA_i608))
-	 omap_ctrl_writel(OMAP36XX_RTA_DISABLE,
-			 OMAP36XX_CONTROL_MEM_RTA_CTRL);
-#if 0 /* PATCH - Off mode issue on HS device */
-	if (omap_type() != OMAP2_DEVICE_TYPE_GP) {
-		omap3_secure_ram_storage =
-			kmalloc(0x803F, GFP_KERNEL);
-		if (!omap3_secure_ram_storage)
-			printk(KERN_ERR "Memory allocation failed when"
-					"allocating for secure sram context\n");
+	/*
+      * Part of fix for errata i468.
+        * GPIO pad spurious transition (glitch/spike) upon wakeup
+        * from SYSTEM OFF mode.
+      */
+      if (omap_rev() <= OMAP3630_REV_ES1_2) {
+              struct clockdomain *wkup_clkdm;
 
-		local_irq_disable();
-		local_fiq_disable();
+               clkdm_add_wkdep(per_clkdm, core_clkdm);
 
-		//omap2_dma_context_save();
-		 omap3_save_secure_ram_context(PWRDM_POWER_ON);  // needs to removed in future HS device!!
-		//omap2_dma_context_restore();
-
-		local_irq_enable();
-		local_fiq_enable();
-	}
-#endif
-
+              wkup_clkdm = clkdm_lookup("wkup_clkdm");
+               if (wkup_clkdm)
+                       clkdm_add_wkdep(per_clkdm, wkup_clkdm);
+               else
+                       printk(KERN_ERR "%s: failed to look up wkup clock "
+                              "domain\n", __func__);
+      }
+	  
+	  
 /*  DVFS   */
 	ret = twl_i2c_read_u8(TWL4030_MODULE_PM_RECEIVER, &RdReg,
                                        R_DCDC_GLOBAL_CFG);

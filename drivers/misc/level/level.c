@@ -62,7 +62,7 @@ static ssize_t store_control(struct device *d,
 			     struct device_attribute *attr, const char *buf,
 			     size_t count);
 
-static DEVICE_ATTR(control, S_IRUGO | S_IWUGO, show_control, store_control);
+static DEVICE_ATTR(control, S_IRUGO | S_IWUSR | S_IWGRP, show_control, store_control);
 
 static struct attribute *levelctl_attributes[] = {
 	&dev_attr_control.attr,

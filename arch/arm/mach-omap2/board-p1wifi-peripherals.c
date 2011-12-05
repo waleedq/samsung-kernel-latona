@@ -59,10 +59,10 @@
 #ifdef ZEUS_CAM
 /* include files for cam pmic (power) and cam sensor */
 #include "../../../drivers/media/video/cam_pmic.h"
-#include "../../../drivers/media/video/ce147.h"
-#include "../../../drivers/media/video/s5ka3dfx.h"
-struct ce147_platform_data omap_board_ce147_platform_data;
-struct s5ka3dfx_platform_data omap_board_s5ka3dfx_platform_data;
+#include "../../../drivers/media/video/s5k5ccgx.h"
+#include "../../../drivers/media/video/s5k6aafx.h"
+struct s5k5ccgx_platform_data omap_board_s5k5ccgx_platform_data;
+struct s5k6aafx_platform_data omap_board_s5k6aafx_platform_data;
 #endif
 
 #if defined( CONFIG_SAMSUNG_PHONE_SVNET )
@@ -594,34 +594,6 @@ static struct platform_device zoom2_wl127x_device = {
 };
 #endif
 
-#ifdef CONFIG_SAMSUNG_HW_EMU_BOARD
-static int omap_board_twl4030_keymap[] = {
-	KEY(0, 1, KEY_MENU),
-	KEY(0, 2, KEY_BACK),
-	KEY(1, 1, KEY_CAMERA_FOCUS),
-	KEY(1, 2, KEY_VOLUMEUP),
-	KEY(2, 1, KEY_CAMERA),
-	KEY(2, 2, KEY_VOLUMEDOWN),
-	0
-};
-#else
-static int omap_board_twl4030_keymap[] = {
-	KEY(2, 1, KEY_VOLUMEUP),
-	KEY(1, 1, KEY_VOLUMEDOWN),
-	0
-};
-#endif
-static struct matrix_keymap_data board_map_data = {
-	.keymap = omap_board_twl4030_keymap,
-	.keymap_size = ARRAY_SIZE(omap_board_twl4030_keymap),
-};
-static struct twl4030_keypad_data board_kp_data = {
-	.keymap_data = &board_map_data,
-	.rows = 5,
-	.cols = 6,
-	.rep = 0,
-};
-
 static struct resource board_power_key_resources[] = {
 	[0] = {
 	       // PWRON KEY
@@ -635,7 +607,20 @@ static struct resource board_power_key_resources[] = {
 	       .end = 0,
 	       .flags = IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHLEVEL,
 	       },
-
+#ifdef CONFIG_INPUT_GPIO_VOLUME_KEY
+	[2] = {
+	       // VOLUME DOWN KEY
+	       .start = 0,
+	       .end = 0,
+	       .flags = IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHLEVEL,
+	       },
+	[3] = {
+	       // VOLUME UP KEY
+	       .start = 0,
+	       .end = 0,
+	       .flags = IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHLEVEL,
+	       },
+#endif
 };
 
 static struct platform_device board_power_key_device = {
@@ -720,26 +705,10 @@ static struct platform_device samsung_battery_device = {
 		}
 };
 
-static struct led_info sec_keyled_list[] = {
-	{
-	 .name = "button-backlight",
-	 },
-};
-
-static struct led_platform_data sec_keyled_data = {
-	.num_leds = ARRAY_SIZE(sec_keyled_list),
-	.leds = sec_keyled_list,
-};
-
-static struct platform_device samsung_led_device = {
-	.name = "secLedDriver",
+static struct platform_device st_adc_device = {
+	.name = "stmpe811",
 	.id = -1,
-	.num_resources = 0,
-	.dev = {
-		.platform_data = &sec_keyled_data,
-		},
 };
-
 static struct platform_device samsung_vibrator_device = {
 	.name = "secVibrator",
 	.id = -1,
@@ -751,6 +720,27 @@ static struct platform_device samsung_pl_sensor_power_device = {
 	.id = -1,
 	.num_resources = 0,
 };
+
+#if defined(CONFIG_KEYBOARD_P1)
+static struct platform_device p1_keyboard = {
+        .name  = "p1_keyboard",
+        .id    = -1,
+};
+#endif
+
+#ifdef CONFIG_30PIN_CONN
+struct platform_device sec_device_connector = {
+		.name	= "acc_con",
+		.id 	= -1,
+};
+#endif
+
+static struct platform_device cmc623_pwm_backlight = {
+	.name = "omap_bl",
+	.id = -1,
+};
+
+extern struct omap_dss_device omap_board_lcd_device;
 
 #if defined( CONFIG_PHONE_IPC_SPI )
 static struct omap2_mcspi_device_config board_ipc_spi_mcspi_config = {
@@ -779,13 +769,16 @@ static struct platform_device *board_devices[] __initdata = {
 #ifdef CONFIG_INPUT_ZEUS_EAR_KEY
 	&board_ear_key_device,
 #endif
+#if defined(CONFIG_KEYBOARD_P1)
+	&p1_keyboard,
+#endif
 	&board_power_key_device,
 	&samsung_battery_device,
 	&samsung_charger_device,
 	&samsung_vibrator_device,
 	&samsung_pl_sensor_power_device,
-	&samsung_led_device,
-
+	&cmc623_pwm_backlight,		// add for cmc623 pwm driver.
+	&st_adc_device,
 #if defined( CONFIG_SAMSUNG_PHONE_SVNET )
 #if defined( CONFIG_PHONE_ONEDRAM )
 	&onedram,
@@ -796,6 +789,9 @@ static struct platform_device *board_devices[] __initdata = {
 #endif // CONFIG_SAMSUNG_PHONE_SVNET
 #ifdef CONFIG_SWITCH_SIO
     &sec_sio_switch,
+#endif
+#ifdef CONFIG_30PIN_CONN
+	&sec_device_connector
 #endif
 };
 
@@ -850,7 +846,6 @@ static struct twl4030_platform_data omap_board_twldata = {
 	.madc		= &omap_board_madc_data,
 	.usb		= &omap_board_usb_data,
 	.gpio		= &omap_board_gpio_data,
-	.keypad     = &board_kp_data,
 	.codec		= &omap_board_codec_data,
 	.power 		= &latona_t2scripts_data,
 	.vmmc1      = &omap_board_vmmc1,
@@ -889,7 +884,7 @@ static struct i2c_board_info __initdata board_i2c_boardinfo1[] = {
 	},
 #endif
 
-#if 0 // zerowait blocked to avoid build error
+#if 1 // zerowait blocked to avoid build error
 #if defined(CONFIG_SND_SOC_MAX9877)
 	{
 		I2C_BOARD_INFO("max9877", 0x4d),
@@ -900,12 +895,13 @@ static struct i2c_board_info __initdata board_i2c_boardinfo1[] = {
 	},
 #endif
 	{
-		I2C_BOARD_INFO(CE147_DRIVER_NAME, CE147_I2C_ADDR),
-		.platform_data = &omap_board_ce147_platform_data,
+		I2C_BOARD_INFO(S5K5CCGX_DRIVER_NAME, S5K5CCGX_I2C_ADDR),
+		.platform_data = &omap_board_s5k5ccgx_platform_data,
 	},
 	{
-		I2C_BOARD_INFO(S5KA3DFX_DRIVER_NAME, S5KA3DFX_I2C_ADDR),
-		.platform_data = &omap_board_s5ka3dfx_platform_data,
+		//I2C_BOARD_INFO(S5K6AAFX_DRIVER_NAME, S5K6AAFX_I2C_ADDR),
+		I2C_BOARD_INFO(S5K6AAFX_DRIVER_NAME, 0x79),
+		.platform_data = &omap_board_s5k6aafx_platform_data,
 	},
 	{
 		I2C_BOARD_INFO("cam_pmic", CAM_PMIC_I2C_ADDR),
@@ -920,26 +916,36 @@ static struct i2c_board_info __initdata board_i2c_boardinfo1[] = {
 		I2C_BOARD_INFO("gp2a", 0x44),
 	},
 #endif
+#endif
 #if !defined(CONFIG_INPUT_YAS529_USE_GPIO_I2C)
 	{
 		I2C_BOARD_INFO("geomagnetic", 0x2E),
 	},
 #endif
-
+	{	 
+		I2C_BOARD_INFO("bh1721", 0x23),	 
+	},
+#if 0	
 	{
 		I2C_BOARD_INFO("Si4709_driver", 0x10),			
 	},
 #endif	
+	{
+	 I2C_BOARD_INFO("secChargerDev", 0x4d),	// 9a, 80 (4d, 40)
+	 },
+	 {
+	 I2C_BOARD_INFO("sec_tune_cmc623_i2c", 0x38),	//ImageSensor CMC623
+	 },
 };
-//Added for I2C3 register-CY8 --Not using 
 
-static struct i2c_board_info __initdata board_i2c_boardinfo_4[] = {
-    {
-        I2C_BOARD_INFO("melfas_ts", 0x40),// 10010(A1)(A0)  A1=PD0, A0=M(0=12bit, 1=8bit)
-        .type = "melfas_ts",
-        //.platform_data = &tsc2007_info,
-    },
+static struct i2c_board_info __initdata board_i2c_boardinfo_3[] = {	//Added for i2c3 register-CY8
+
+	{
+	 I2C_BOARD_INFO("qt602240_ts", 0x4A),
+	 },
+
 };
+
 #ifdef CONFIG_INPUT_ZEUS_EAR_KEY
 static inline void __init board_init_ear_key(void)
 {
@@ -958,72 +964,54 @@ static inline void __init board_init_power_key(void)
 {
 	board_power_key_resources[0].start = gpio_to_irq(OMAP_GPIO_KEY_PWRON);
 	if (gpio_request(OMAP_GPIO_KEY_PWRON, "power_key_irq") < 0) {
-		printk(KERN_ERR
-		       "\n FAILED TO REQUEST GPIO %d for POWER KEY IRQ \n",
-		       OMAP_GPIO_KEY_PWRON);
+		printk(KERN_ERR "\n FAILED TO REQUEST GPIO %d for POWER KEY IRQ \n", OMAP_GPIO_KEY_PWRON);
 		return;
 	}
-#if 0 // zerowait blocked to avoid build error
-	board_power_key_resources[1].start = gpio_to_irq(OMAP_GPIO_KEY_HOME);
-	if (gpio_request(OMAP_GPIO_KEY_HOME, "home_key_irq") < 0) {
-		printk(KERN_ERR
-		       "\n FAILED TO REQUEST GPIO %d for VOLDN KEY IRQ \n",
-		       OMAP_GPIO_KEY_HOME);
+#ifdef CONFIG_INPUT_GPIO_VOLUME_KEY
+	board_power_key_resources[2].start = gpio_to_irq(OMAP_GPIO_VOLUME_DOWN);
+	if (gpio_request(OMAP_GPIO_VOLUME_DOWN, "volme_down_key_irq") < 0) {
+		printk(KERN_ERR "\n FAILED TO REQUEST GPIO %d for VOLUME DOWN KEY IRQ \n", OMAP_GPIO_VOLUME_DOWN);
 		return;
 	}
-#endif 
+	board_power_key_resources[3].start = gpio_to_irq(OMAP_GPIO_VOLUME_UP);
+	if (gpio_request(OMAP_GPIO_VOLUME_UP, "volume_up_key_irq") < 0) {
+		printk(KERN_ERR "\n FAILED TO REQUEST GPIO %d for VOLUME UP KEY IRQ \n", OMAP_GPIO_VOLUME_UP);
+		return;
+	}
+	gpio_direction_input(OMAP_GPIO_VOLUME_DOWN);
+	gpio_direction_input(OMAP_GPIO_VOLUME_UP);
+#endif
 	gpio_direction_input(OMAP_GPIO_KEY_PWRON);
-// zerowait blocked to avoid build error	gpio_direction_input(OMAP_GPIO_KEY_HOME);
 }
 
 static inline void __init board_init_battery(void)
 {
-	samsung_charger_resources[0].start = 0;	//gpio_to_irq(OMAP_GPIO_USBSW_NINT);;    
-#if 0 // zerowait blocked to avoid build error
-	if (gpio_request(OMAP_GPIO_TA_NCONNECTED, "ta_nconnected irq") < 0) {
-		printk(KERN_ERR
-		       "Failed to request GPIO%d for ta_nconnected IRQ\n",
-		       OMAP_GPIO_TA_NCONNECTED);
-		samsung_charger_resources[1].start = -1;
-	} else {
-		samsung_charger_resources[1].start =
-		    gpio_to_irq(OMAP_GPIO_TA_NCONNECTED);
-//      Daegil.im 2011-02-10 : below code was disabled for build			
-//		omap_set_gpio_debounce_time(OMAP_GPIO_TA_NCONNECTED, 3);
-//		omap_set_gpio_debounce(OMAP_GPIO_TA_NCONNECTED, true);
-	}
-#endif
+	samsung_charger_resources[0].start = TWL4030_IRQ_BASE + USB_PRES_INTR_OFFSET;
+	samsung_charger_resources[1].start = TWL4030_IRQ_BASE + BCI_PRES_INTR_OFFSET;
 
 	if (gpio_request(OMAP_GPIO_CHG_ING_N, "charge full irq") < 0) {
-		printk(KERN_ERR
-		       "Failed to request GPIO%d for charge full IRQ\n",
-		       OMAP_GPIO_CHG_ING_N);
+		printk(KERN_ERR "Failed to request GPIO%d for charge full IRQ\n", OMAP_GPIO_CHG_ING_N);
 		samsung_charger_resources[2].start = -1;
 	} else {
-		samsung_charger_resources[2].start =
-		    gpio_to_irq(OMAP_GPIO_CHG_ING_N);
+		samsung_charger_resources[2].start = gpio_to_irq(OMAP_GPIO_CHG_ING_N);
 //		omap_set_gpio_debounce_time(OMAP_GPIO_CHG_ING_N, 3);
 //		omap_set_gpio_debounce(OMAP_GPIO_CHG_ING_N, true);
 	}
 
 	if (gpio_request(OMAP_GPIO_CHG_EN, "Charge enable gpio") < 0) {
-		printk(KERN_ERR
-		       "Failed to request GPIO%d for charge enable gpio\n",
-		       OMAP_GPIO_CHG_EN);
+		printk(KERN_ERR "Failed to request GPIO%d for charge enable gpio\n", OMAP_GPIO_CHG_EN);
 		samsung_charger_resources[3].start = -1;
 	} else {
-		samsung_charger_resources[3].start =
-		    gpio_to_irq(OMAP_GPIO_CHG_EN);
+		samsung_charger_resources[3].start = gpio_to_irq(OMAP_GPIO_CHG_EN);
 	}
 
-	samsung_charger_resources[3].start = gpio_to_irq(OMAP_GPIO_CHG_EN);
 }
 
 static void atmel_dev_init(void)
 {
 	/* Set the ts_gpio pin mux */
 	if (gpio_request(OMAP_GPIO_TSP_INT, "touch_atmel") < 0) {
-		printk(KERN_ERR "can't get synaptics pen down GPIO\n");
+		printk(KERN_ERR "can't get OMAP_GPIO_TSP_INT\n");
 		return;
 	}
 	gpio_direction_input(OMAP_GPIO_TSP_INT);
@@ -1061,7 +1049,7 @@ static int __init omap_i2c_init(void)
     omap_register_i2c_bus(1, 400, NULL, omap_board_i2c_boardinfo,
                          ARRAY_SIZE(omap_board_i2c_boardinfo));
    
-    omap_register_i2c_bus(3, 400, NULL, NULL, 0);
+	omap_register_i2c_bus(3, 200, NULL, board_i2c_boardinfo_3, ARRAY_SIZE(board_i2c_boardinfo_3));
 
     return 0;
 }

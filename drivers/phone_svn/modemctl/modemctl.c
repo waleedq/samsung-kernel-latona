@@ -197,7 +197,7 @@ static ssize_t show_status(struct device *d,
 static ssize_t show_debug(struct device *d,
 		struct device_attribute *attr, char *buf);
 
-static DEVICE_ATTR(control, S_IRUGO | S_IWUGO, show_control, store_control);
+static DEVICE_ATTR(control, S_IRUGO | S_IWUSR | S_IWGRP, show_control, store_control);
 static DEVICE_ATTR(status, S_IRUGO, show_status, NULL);
 static DEVICE_ATTR(debug, S_IRUGO, show_debug, NULL);
 

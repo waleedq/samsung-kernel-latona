@@ -248,15 +248,28 @@ void P_enable_int(void)
 	debug("   INTERRUPT ENABLED");
 	enable_irq_wake(P_IRQ);
 
-	// disable irq
+	// enable irq
 	reg_val = omap_readl(0x4905001C);
 	reg_val |= 0x00200000; 
 	omap_writel(reg_val, 0x4905001C);
-
-	// disable wakeup
+//	reg_val = omap_readl(0x4905001C);
+//	printk("P_enable_int 1C : %x \n", reg_val);
+	
+	// enable wakeup
 	reg_val = omap_readl(0x49050020);
 	reg_val |= 0x00200000;
 	omap_writel(reg_val, 0x49050020);
+//	reg_val = omap_readl(0x49050020);
+//	printk("P_enable_int 20: %x \n", reg_val);
+
+	
+	// enable wakeup
+	reg_val = omap_readl(0x480020b0);
+	reg_val |= (1<<30);
+	omap_writel(reg_val, 0x480020b0);
+//	reg_val = omap_readl(0x480020b0);
+//	printk("P_enable_int pad: %x \n", reg_val);
+
 }
 
 void P_disable_int(void)
@@ -270,11 +283,23 @@ void P_disable_int(void)
 	reg_val = omap_readl(0x4905001C);
 	reg_val &= 0xFFDFFFFF; 
 	omap_writel(reg_val, 0x4905001C);
+//	reg_val = omap_readl(0x4905001C);
+//	printk("P_disable_int 1C : %x \n", reg_val);
 
 	// disable wakeup
 	reg_val = omap_readl(0x49050020);
 	reg_val &= 0xFFDFFFFF;
 	omap_writel(reg_val, 0x49050020);
+//	reg_val = omap_readl(0x49050020);
+//	printk("P_disable_int 20: %x \n", reg_val);	
+
+	// disable wakeup
+	reg_val = omap_readl(0x480020b0);
+	reg_val &= ~(1<<30);
+	omap_writel(reg_val, 0x480020b0);
+//	reg_val = omap_readl(0x480020b0);
+//	printk("P_enable_int pad: %x \n", reg_val);
+
 }
 
 /*****************************************************************************/

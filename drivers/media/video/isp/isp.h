@@ -69,10 +69,19 @@ struct isp_pipeline;
 #define ZEUS_CAM
 
 #ifdef ZEUS_CAM
-
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+#define JPEG_CAPTURE_WIDTH  644
+#else
 #define JPEG_CAPTURE_WIDTH  1536
+#endif
 #define JPEG_CAPTURE_WIDTH_IN_OMAP JPEG_CAPTURE_WIDTH/ISP_BYTES_PER_PIXEL
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+#define JPEG_CAPTURE_HEIGHT 5351
+#else
 #define JPEG_CAPTURE_HEIGHT 2300
+#endif
+#define YUV_CAPTURE_WIDTH	1280
+#define YUV_CAPTURE_HEIGHT	960
 
 #define is_isppreview_enabled()		0
 #define is_ispresizer_enabled()		0 // disabled for now, may need to enable

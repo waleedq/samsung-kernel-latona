@@ -183,7 +183,6 @@ static int _omap_mux_init_signal(struct omap_mux_partition *partition,
 					 "%s.%s 0x%04x -> 0x%04x\n",
 					 __func__, m0_entry, muxname,
 					old_mode, mux_mode);
-				
 				omap_mux_write(partition, mux_mode,
 					       m->reg_offset);
 				found++;
@@ -313,13 +312,15 @@ static inline void omap_mux_decode(struct seq_file *s, u16 val)
 
 	OMAP_MUX_TEST_FLAG(val, OMAP_PIN_OFF_WAKEUPENABLE);
 	if (val & OMAP_OFF_EN) {
-		if (!(val & OMAP_OFFOUT_EN)) {
-			if (!(val & OMAP_OFF_PULL_UP)) {
-				OMAP_MUX_TEST_FLAG(val,
-					OMAP_PIN_OFF_INPUT_PULLDOWN);
-			} else {
-				OMAP_MUX_TEST_FLAG(val,
-					OMAP_PIN_OFF_INPUT_PULLUP);
+		if (val & OMAP_OFFOUT_EN) {
+			if (val & OMAP_OFF_PULL_EN) {
+				if (!(val & OMAP_OFF_PULL_UP)) {
+					OMAP_MUX_TEST_FLAG(val,
+						OMAP_PIN_OFF_INPUT_PULLDOWN);
+				} else {
+					OMAP_MUX_TEST_FLAG(val,
+						OMAP_PIN_OFF_INPUT_PULLUP);
+				}
 			}
 		} else {
 			if (!(val & OMAP_OFFOUT_VAL)) {
@@ -504,7 +505,7 @@ static void __init omap_mux_dbg_create_entry(
 		struct omap_mux *m = &e->mux;
 		m->partition = partition;
 
-		(void)debugfs_create_file(m->muxnames[0], S_IWUGO, mux_dbg_dir,
+		(void)debugfs_create_file(m->muxnames[0], S_IWUSR | S_IWGRP, mux_dbg_dir,
 					  m, &omap_mux_dbg_signal_fops);
 	}
 }

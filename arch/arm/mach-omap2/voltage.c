@@ -364,10 +364,10 @@ static struct omap_volt_data omap34xx_vdd1_volt_data[] = {
 };
 
 static struct omap_volt_data omap36xx_vdd1_volt_data[] = {
-	{.volt_nominal = 1025000, .sr_errminlimit = 0xF4, .vp_errgain = 0x0C, .abb_type = NOMINAL_OPP},
-	{.volt_nominal = 1200000, .sr_errminlimit = 0xF9, .vp_errgain = 0x16, .abb_type = NOMINAL_OPP},
-	{.volt_nominal = 1330000, .sr_errminlimit = 0xFA, .vp_errgain = 0x23, .abb_type = NOMINAL_OPP},
-	{.volt_nominal = 1387500, .sr_errminlimit = 0xFA, .vp_errgain = 0x27, .abb_type = FAST_OPP},
+	{.volt_nominal = 1025000, .sr_oppmargin = 37500, .sr_errminlimit = 0xF4, .vp_errgain = 0x0C, .abb_type = NOMINAL_OPP},
+	{.volt_nominal = 1200000, .sr_oppmargin = 37500, .sr_errminlimit = 0xF9, .vp_errgain = 0x16, .abb_type = NOMINAL_OPP},
+	{.volt_nominal = 1330000, .sr_oppmargin = 37500, .sr_errminlimit = 0xFA, .vp_errgain = 0x23, .abb_type = NOMINAL_OPP},
+	{.volt_nominal = 1387500, .sr_oppmargin = 62500,  .sr_errminlimit = 0xFA, .vp_errgain = 0x27, .abb_type = FAST_OPP},
 };
 
 /* VDD2 */
@@ -378,9 +378,13 @@ static struct omap_volt_data omap34xx_vdd2_volt_data[] = {
 };
 
 static struct omap_volt_data omap36xx_vdd2_volt_data[] = {
-	{.volt_nominal = 930000, .sr_errminlimit = 0xF4, .vp_errgain = 0x0C},
+	{.volt_nominal = 930000, .sr_oppmargin = 37500,  .sr_errminlimit = 0xF4, .vp_errgain = 0x0C},
 	//{.volt_nominal = 1162500, .sr_errminlimit = 0xF9, .vp_errgain = 0x16},
-	{.volt_nominal = 1162500, .sr_errminlimit = 0xF9, .vp_errgain = 0x16},
+	{.volt_nominal = 1162500, .sr_oppmargin = 37500, .sr_errminlimit = 0xF9, .vp_errgain = 0x16},
+
+//	{.volt_nominal = 930000, .sr_oppmargin = 0,  .sr_errminlimit = 0xF4, .vp_errgain = 0x0C},
+//	{.volt_nominal = 1162500, .sr_oppmargin = 0, .sr_errminlimit = 0xF9, .vp_errgain = 0x16},
+
 };
 
 /*
@@ -1968,6 +1972,7 @@ int omap_voltage_calib_reset(struct voltagedomain *voltdm)
 {
 	struct omap_vdd_info *vdd;
 	struct omap_volt_data *volt_data;
+	int i;
 
 	if (IS_ERR_OR_NULL(voltdm)) {
 		pr_warning("%s: VDD specified does not exist!\n", __func__);
@@ -1977,7 +1982,7 @@ int omap_voltage_calib_reset(struct voltagedomain *voltdm)
 	vdd = container_of(voltdm, struct omap_vdd_info, voltdm);
 	volt_data = vdd->volt_data;
 	/* reset the calibrated voltages as 0 */
-	while (volt_data->volt_nominal) {
+	for (i = 0; i < vdd->volt_data_count; i++) {
 		volt_data->volt_calibrated = 0;
 		volt_data++;
 	}
@@ -2529,6 +2534,10 @@ int omap_voltage_scale(struct voltagedomain *voltdm)
 	/* Find the highest voltage for this vdd */
 	node = plist_last(&vdd->user_list);
 	volt = node->prio;
+#if 0
+		if (curr_volt != volt)
+			printk("[DEBUG] curr_volt =%d ,volt = %d  \n ", curr_volt,volt);
+#endif 
 
 	
 
@@ -2539,13 +2548,13 @@ int omap_voltage_scale(struct voltagedomain *voltdm)
 	}
 
 #ifdef SMARTREFLEX_DEBUG
-      printk("curr_volt =%d ,volt = %d  \n ", curr_volt,volt);
+   	printk("[DEBUG] curr_volt =%d ,volt = %d  \n ", curr_volt,volt);
 #endif 
 	if (curr_volt == volt) {
 		is_volt_scaled = 1;
 	} else if (curr_volt < volt) {
 #ifdef SMARTREFLEX_DEBUG
-	printk("L to H OPP Volt scal\n");
+	printk("[DEBUG] L to H OPP Volt scal\n");
 #endif
 		omap_voltage_scale_vdd(voltdm,
 				omap_voltage_get_voltdata(voltdm, volt));
@@ -2574,7 +2583,7 @@ int omap_voltage_scale(struct voltagedomain *voltdm)
 	if (!is_volt_scaled)
 		{
 #ifdef SMARTREFLEX_DEBUG
-	printk("H to L OPP Volt scal\n");
+	printk("[DEBUG] H to L OPP Volt scal\n");
 #endif 
 		omap_voltage_scale_vdd(voltdm,
 				omap_voltage_get_voltdata(voltdm, volt));

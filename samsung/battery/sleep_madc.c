@@ -231,8 +231,10 @@ s32 t2_adc_data( u8 channel)
 	int i;
 	unsigned int data[5];
 
+#ifdef CONFIG_MACH_SAMSUNG_LATONA
     // To control thermal sensor power
    	omap_set_gpio_dataout_in_sleep(OMAP_GPIO_EN_TEMP_VDD, 1);
+#endif
 	t2_write(0x48, SEL_MADC_MCPC, CARKIT_ANA_CTRL); 
 
     #if 0
@@ -257,8 +259,10 @@ s32 t2_adc_data( u8 channel)
 
     ret = get_average_adc_value(data, 5);
 
+#ifdef CONFIG_MACH_SAMSUNG_LATONA
     // To control thermal sensor power
     omap_set_gpio_dataout_in_sleep(OMAP_GPIO_EN_TEMP_VDD, 0);
+#endif
 
     #if 0
     // PM_RECEIVER [

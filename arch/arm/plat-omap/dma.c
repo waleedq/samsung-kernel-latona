@@ -56,12 +56,6 @@ static struct omap_system_dma_plat_info *p;
 static struct omap_dma_dev_attr *d;
 static struct platform_device           *pd;
 
-static struct omap_dma_global_context_registers {
-	u32 dma_irqenable_l0;
-	u32 dma_ocp_sysconfig;
-	u32 dma_gcr;
-} omap_dma_global_context;
-
 #define dma_read(reg)							\
 ({									\
 	u32 __val;							\
@@ -995,39 +989,6 @@ static int __devinit omap_system_dma_probe(struct platform_device *pdev)
 
 	dev_info(&pdev->dev, "System DMA registered\n");
 	return 0;
-}
-void omap_dma_global_context_save(void)
-{
-	omap_dma_global_context.dma_irqenable_l0 =
-		dma_read(IRQENABLE_L0);
-	omap_dma_global_context.dma_ocp_sysconfig =
-		dma_read(OCP_SYSCONFIG);
-	omap_dma_global_context.dma_gcr = dma_read(GCR);
-}
-
-
-void omap_dma_global_context_restore(void)
-{
-	int ch;
-
-	dma_write(omap_dma_global_context.dma_gcr, GCR);
-	dma_write(omap_dma_global_context.dma_ocp_sysconfig,
-		OCP_SYSCONFIG);
-	dma_write(omap_dma_global_context.dma_irqenable_l0,
-		IRQENABLE_L0);
-
-	/*
-	 * A bug in ROM code leaves IRQ status for channels 0 and 1 uncleared
-	 * after secure sram context save and restore. Hence we need to
-	 * manually clear those IRQs to avoid spurious interrupts. This
-	 * affects only secure devices.
-	 */
-	if (cpu_is_omap34xx() && (omap_type() != OMAP2_DEVICE_TYPE_GP))
-		dma_write(0x3 , IRQSTATUS_L0);
-
-	for (ch = 0; ch < dma_chan_count; ch++)
-		if (dma_chan[ch].dev_id != -1)
-			omap_clear_dma(ch);
 }
 
 static int omap_dma_suspend(struct device *dev)

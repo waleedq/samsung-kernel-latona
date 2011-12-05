@@ -295,6 +295,7 @@ int omap_pm_set_min_bus_tput(struct device *dev, u8 agent_id, long r)
 	struct device *l3_dev;
 	static struct device dummy_l3_dev;
 	unsigned long target_level = 0;
+	int opp_lock = omap_get_vdd2_lock();
 
 	if (!dev || (agent_id != OCP_INITIATOR_AGENT &&
 	    agent_id != OCP_TARGET_AGENT)) {
@@ -319,6 +320,16 @@ int omap_pm_set_min_bus_tput(struct device *dev, u8 agent_id, long r)
 		pr_debug("OMAP PM: add min bus tput constraint for: "
 			"interconnect dev %s for agent_id %d: rate %ld KiB\n",
 				dev_name(dev), agent_id, r);
+		if (opp_lock) {
+			long *lock_req = &r;
+			long opp_freqs[3] = {
+					(omap_rev() > OMAP4430_REV_ES2_0) ? 98403*4 : 100*1000*4,
+					(omap_rev() > OMAP4430_REV_ES2_0) ? 100*1000*4 : 200*1000*4,
+					(omap_rev() > OMAP4430_REV_ES2_0) ? 200*1000*4 : -1
+			};
+			printk(KERN_DEBUG "%s: locking to %ld\n", __func__, opp_freqs[opp_lock - 1]);
+			*lock_req = opp_freqs[opp_lock - 1];
+		}
 		target_level = add_req_tput(dev, r, bus_tput);
 	}
 
@@ -554,6 +565,9 @@ void omap_pm_dsp_set_min_opp(u8 opp_id)
 		return;
 	}
 
+	if (omap_get_vdd1_lock())
+		return;
+
 	pr_debug("OMAP PM: DSP requests minimum VDD1 OPP to be %d\n", opp_id);
 
 	/* Caller sees frequency table as [1..N], we "C" it as [0..N-1]. */
@@ -661,7 +675,10 @@ void omap_pm_cpu_set_freq(unsigned long f)
 
 	pr_debug("OMAP PM: CPUFreq requests CPU frequency to be set to %lu\n",
 		 f);
-
+	if (omap_get_vdd1_lock()) {
+		pr_debug("%s: ignoring freq change to %lu\n", __func__, f);
+		return;
+	}
 	/*
 	 * For l-o dev tree, determine whether MPU freq or DSP OPP id
 	 * freq is higher.  Find the OPP ID corresponding to the

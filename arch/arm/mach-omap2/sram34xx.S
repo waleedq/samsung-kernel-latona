@@ -34,6 +34,9 @@
 #include "sdrc.h"
 #include "cm.h"
 
+#include "prcm-common.h"
+#include "prm.h"
+
 	.text
 
 /* r1 parameters */
@@ -67,6 +70,18 @@
 
 /* CM_CLKSEL1_PLL bit settings */
 #define CORE_DPLL_CLKOUT_DIV_SHIFT	0x1b
+
+/* PRM_RSTCTRL bit setting */
+#define EN_DPLL3_RESET                 0x4
+
+
+/* DSS registers */
+#define OMAP34XX_DISPC_BASE		0x48050400
+#define DISPC_CONTROL			OMAP2_L4_IO_ADDRESS(OMAP34XX_DISPC_BASE + 0x040)
+#define DISPC_IRQSTATUS			OMAP2_L4_IO_ADDRESS(OMAP34XX_DISPC_BASE + 0x018)
+#define DISPC_LCD_EN			(1 << 0)
+#define DISPC_VSYNC_ST			(1 << 1)
+#define CM_DSS_FCLK_ST			(1 << 0)
 
 /*
  * omap3_sram_configure_core_dpll - change DPLL3 M2 divider
@@ -131,6 +146,26 @@ ENTRY(omap3_sram_configure_core_dpll)
 skip_cs1_params:
 	dsb				@ flush buffered writes to interconnect
 
+	ldr	r11, omap3_cm_fclk_dss
+	ldr	r12, [r11]
+	and	r12, r12, #CM_DSS_FCLK_ST
+	cmp	r12, #CM_DSS_FCLK_ST	@ check if dss fclk is active
+	blne	configure_dpll
+	ldr	r11, omap3_dispc_ctrl
+	ldr	r12, [r11]
+	and	r12, r12, #DISPC_LCD_EN
+	cmp	r12, #DISPC_LCD_EN	@ check if lcd is enabled
+	blne	configure_dpll
+	ldr	r11, omap3_dispc_irq_st
+	ldr	r12, [r11]
+	and	r12, r12, #DISPC_VSYNC_ST	@ clear vsync
+	str	r12, [r11]
+wait_vsync_set:
+	ldr	r12, [r11]
+	and	r12, r12, #DISPC_VSYNC_ST
+	cmp	r12, #DISPC_VSYNC_ST
+	blne	wait_vsync_set		@ wait for vsync to be set.
+configure_dpll:
 	cmp	r3, #1			@ if increasing SDRC clk rate,
 	bleq	configure_sdrc		@ program the SDRC regs early (for RFR)
 	cmp	r1, #SDRC_UNLOCK_DLL	@ set the intended DLL state
@@ -309,7 +344,58 @@ omap3_sdrc_dlla_ctrl:
 	.word OMAP34XX_SDRC_REGADDR(SDRC_DLLA_CTRL)
 core_m2_mask_val:
 	.word 0x07FFFFFF
+omap3_cm_fclk_dss:
+	.word OMAP34XX_CM_REGADDR(OMAP3430_DSS_MOD, CM_FCLKEN)
+omap3_dispc_ctrl:
+	.word DISPC_CONTROL
+omap3_dispc_irq_st:
+	.word DISPC_IRQSTATUS
 
 ENTRY(omap3_sram_configure_core_dpll_sz)
 	.word	. - omap3_sram_configure_core_dpll
+	
+ /* omap3_sram_configure_core_dpll_warmreset
+ * Enable SDRC self refresh on idle request, put SDRC in idle,
+* wait until SDRC goes to idle
+* Enable DPLL3 reset bit in RM_RSTCTRL
+*/
+
+ENTRY(omap3_sram_configure_core_dpll_warmreset)
+
+       bl      sdram_in_selfrefresh1
+       ldr     r11, omap3_reset_cntrl
+       ldr     r12, [r11]
+       orr     r12, r12, #EN_DPLL3_RESET       @ Enable DPLL3 reset bit
+       str     r12, [r11]
+
+sdram_in_selfrefresh1:
+       ldr     r11, omap3_sdrc_power1  @ read the SDRC_POWER register
+       ldr     r12, [r11]              @ read the contents of SDRC_POWER
+       mov     r9, r12                 @ keep a copy of SDRC_POWER bits
+       orr     r12, r12, #SRFRONIDLEREQ_MASK   @ enable self refresh on idle
+       str     r12, [r11]              @ write back to SDRC_POWER register
+       ldr     r12, [r11]              @ posted-write barrier for SDRC
+       ldr     r11, omap3_cm_iclken1_core1     @ read the CM_ICLKEN1_CORE reg
+       ldr     r12, [r11]
+       bic     r12, r12, #EN_SDRC_MASK         @ disable iclk bit for SDRC
+       str     r12, [r11]
+wait_sdrc_idle2:
+       ldr     r11, omap3_cm_idlest1_core1
+       ldr     r12, [r11]
+       and     r12, r12, #ST_SDRC_MASK         @ check for SDRC idle
+       cmp     r12, #ST_SDRC_MASK
+       bne     wait_sdrc_idle2
+       bx      lr
+
+omap3_reset_cntrl:
+       .word OMAP34XX_PRM_REGADDR(OMAP3430_GR_MOD, OMAP2_RM_RSTCTRL)
+omap3_sdrc_power1:
+       .word OMAP34XX_SDRC_REGADDR(SDRC_POWER)
+omap3_cm_idlest1_core1:
+       .word OMAP34XX_CM_REGADDR(CORE_MOD, CM_IDLEST)
+omap3_cm_iclken1_core1:
+       .word OMAP34XX_CM_REGADDR(CORE_MOD, CM_ICLKEN1)
+
+ENTRY(omap3_sram_configure_core_dpll_warmreset_sz)
+       .word   . - omap3_sram_configure_core_dpll_warmreset
 

@@ -12,25 +12,49 @@
 #endif
 
 // Unit is sec.
-#define MONITOR_DURATION_DUR_SLEEP  	30
-#define MONITOR_DEFAULT_DURATION    	30
-#define MONITOR_TEMP_DURATION       	30
-#define MONITOR_RECHG_VOL_DURATION  	30
+#define MONITOR_DURATION_DUR_SLEEP		30
+#define MONITOR_DEFAULT_DURATION		30
+#define MONITOR_TEMP_DURATION			30
+#define MONITOR_RECHG_VOL_DURATION		30
 
 
-#define DEFAULT_CHARGING_TIMEOUT        6 * 60 * 60
-#define DEFAULT_RECHARGING_TIMEOUT        (1 * 60 * 60 + 30 * 60)
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+	#define DEFAULT_CHARGING_TIMEOUT        6 * 60 * 60
+	#define DEFAULT_RECHARGING_TIMEOUT        2 * 60 * 60
 
-#define CHARGE_STOP_TEMPERATURE_MAX     	65			// 45
-#define CHARGE_RECOVER_TEMPERATURE_MAX      55		// 40
+	#ifdef CONFIG_SAMSUNG_LOCALE_USAGSM
+    	#define CHARGE_STOP_TEMPERATURE_MAX      46000  // 46
+    	#define CHARGE_RECOVER_TEMPERATURE_MAX      43000  // 43
 
-#define CHARGE_STOP_TEMPERATURE_MIN     	-3			// 0
-#define CHARGE_RECOVER_TEMPERATURE_MIN      1	// 3
-#define CHARGE_RECHG_VOLTAGE            	4110
-#define CHARGE_RECHG_VOLTAGE_OFFMODE       	4110
+    	#define CHARGE_STOP_TEMPERATURE_EVENT  46000  // 63
+    	#define CHARGE_RECOVER_TEMPERATURE_EVENT    43000  // 58
+	#else
+    	#define CHARGE_STOP_TEMPERATURE_MAX      54500  // 55
+    	#define CHARGE_RECOVER_TEMPERATURE_MAX      44500  // 45
 
-#define CHARGE_STOP_TEMPERATURE_EVENT		67		// 63
-#define CHARGE_RECOVER_TEMPERATURE_EVENT    60		// 58
+    	#define CHARGE_STOP_TEMPERATURE_EVENT  54500  // 63
+    	#define CHARGE_RECOVER_TEMPERATURE_EVENT    44500  // 58
+	#endif
+
+	#define CHARGE_STOP_TEMPERATURE_MIN			-1000		// 0
+	#define CHARGE_RECOVER_TEMPERATURE_MIN      1800		// 3
+	#define CHARGE_RECHG_VOLTAGE            	4140
+#else
+	#define DEFAULT_CHARGING_TIMEOUT        6 * 60 * 60
+	#define DEFAULT_RECHARGING_TIMEOUT        (1 * 60 * 60 + 30 * 60)
+
+	#define CHARGE_STOP_TEMPERATURE_MAX     	65			// 45
+	#define CHARGE_RECOVER_TEMPERATURE_MAX      55		// 40
+
+	#define CHARGE_STOP_TEMPERATURE_MIN     	-3			// 0
+	#define CHARGE_RECOVER_TEMPERATURE_MIN      1	// 3
+	#define CHARGE_RECHG_VOLTAGE            	4110
+	#define CHARGE_RECHG_VOLTAGE_OFFMODE       	4110
+
+	#define CHARGE_STOP_TEMPERATURE_EVENT		67		// 63
+	#define CHARGE_RECOVER_TEMPERATURE_EVENT    60		// 58
+#endif
+
 
 #define CHARGE_FULL_CURRENT_ADC 250
 
@@ -90,6 +114,9 @@ typedef struct
 
         int confirm_full_by_current;
         int confirm_recharge;
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+		int low_batt_comp_flag;
+#endif
     }battery;
 
     /*Charger info*/
@@ -97,7 +124,9 @@ typedef struct
     {
         int prev_cable_status;
         int cable_status;
-
+#ifdef CONFIG_MACH_SAMSUNG_P1WIFI
+		bool samsung_charger;
+#endif
         int prev_charge_status;
         int charge_status;
 

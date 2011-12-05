@@ -39,6 +39,9 @@
 #include "s5ka3dfx.h"
 #include "s5ka3dfx_tune.h"
 
+bool front_cam_in_use= false;
+
+
 #if (CAM_S5KA3DFX_DBG_MSG)
 #include "dprintk.h"
 #else
@@ -2340,9 +2343,12 @@ static int ioctl_s_power(struct v4l2_int_device *s, enum v4l2_power on)
     case V4L2_POWER_ON:
     {
       dprintk(CAM_DBG, S5KA3DFX_MOD_NAME "pwr on-----!\n");
+      front_cam_in_use= 1 ;
       err = s5ka3dfx_get_rev();
       if(err)
       {
+
+        front_cam_in_use= 0 ;
         printk(S5KA3DFX_MOD_NAME "Unable to detect " S5KA3DFX_DRIVER_NAME " sensor\n");
         sensor->pdata->power_set(V4L2_POWER_OFF);
         return err;
@@ -2374,6 +2380,7 @@ static int ioctl_s_power(struct v4l2_int_device *s, enum v4l2_power on)
     case V4L2_POWER_OFF:
     {
       dprintk(CAM_DBG, S5KA3DFX_MOD_NAME "pwr off-----!\n");
+        front_cam_in_use= 0 ;
 
       /* Make the default zoom */
       sensor->zoom = S5KA3DFX_ZOOM_1P00X;

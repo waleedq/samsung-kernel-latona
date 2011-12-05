@@ -32,13 +32,13 @@
 #define MAX_DISPLAYS	3
 #endif
 #define MAX_MANAGERS	3
-//Changes for OMAPS00235683
+
 #define OMAP_VOUT_MAX_BUFFERS    6
 /*
  * Currently VRFB BUF context and Data Buffers are mapped 1:1
  */
  #define OMAP_VOUT_MAX_VRFB_CTXT        OMAP_VOUT_MAX_BUFFERS
-//Changes for OMAPS00235683
+
 
 /* TI Private V4L2 ioctls */
 #define V4L2_CID_TI_DISPC_OVERLAY	(V4L2_CID_PRIVATE_BASE + 0)
@@ -103,12 +103,14 @@ struct omap_vout_device {
 	struct omap2video_device *vid_dev;
 	int vid;
 	int opened;
-//720 ISP Enable OMAPS00235346
-#ifdef CONFIG_OMAP3_ISP_RESIZER
-	u32 rsz_configured;
-	u32 use_isp_rsz_for_downscale;
+
+#ifdef CONFIG_OMAP3_ISP_RESIZER_ON_OVERLAY
+#define ISPRSZ_MANUALMODE	(1<<2)
+#define ISPRSZ_ENABLE		(1<<1)
+#define ISPRSZ_CONFIGURED	(1<<0)
+	u32 isprsz;
 #endif
-//720 ISP Enable OMAPS00235346
+
 	/* we don't allow to change image fmt/size once buffer has
 	 * been allocated
 	 */
@@ -157,11 +159,9 @@ struct omap_vout_device {
 	int vrfb_bpp; /* bytes per pixel with respect to VRFB */
 
 	struct vid_vrfb_dma vrfb_dma_tx;
-//Changes for OMAPS00235683
 	unsigned int smsshado_phy_addr[OMAP_VOUT_MAX_VRFB_CTXT];
 	unsigned int smsshado_virt_addr[OMAP_VOUT_MAX_VRFB_CTXT];
 	struct vrfb vrfb_context[OMAP_VOUT_MAX_VRFB_CTXT];
-//Changes for OMAPS00235683
 	bool vrfb_static_allocation;
 	unsigned int smsshado_size;
 	unsigned char pos;

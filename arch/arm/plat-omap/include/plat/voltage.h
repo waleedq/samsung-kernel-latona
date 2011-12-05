@@ -31,8 +31,6 @@ extern struct dentry *pm_dbg_main_dir;
 #define VOLTAGE_PRECHANGE	0
 #define VOLTAGE_POSTCHANGE	1
 
-//#define SMARTREFLEX_DEBUG
-
 struct omap_volt_pmic_info {
 	char *name;
 	int slew_rate;
@@ -81,6 +79,7 @@ struct omap_volt_data {
 	u32	volt_calibrated;
 	u32	volt_dynamic_nominal;
 	u32	sr_nvalue;
+	u32	sr_oppmargin;
 	u8	sr_errminlimit;
 	u8	vp_errgain;
 	u8	abb_type;

@@ -52,8 +52,9 @@
 #define LCD_YRES		        800
 #define LCD_PIXCLOCK_MAX	    24000 // 26000
 
-static int current_panel = -1;	// 0:sony, 1:Hitachi , 2:Hydis, 3:SMD, 4:Sony(a-Si)
+static int current_panel = -1;	// 0:sony, 1:Hitachi(20mA) , 2:Hydis, 3:SMD, 4:Sony(a-Si), 5:Hitachi(17mA)
 static int lcd_enabled = 0;
+static int is_nt35510_spi_shutdown = 0;
 
 // default setting : sony panel. 
 static u16 LCD_HBP =	10;//20; 
@@ -357,6 +358,11 @@ static void nt35510_panel_disable(struct omap_dss_device *dssdev)
 {
 	if (dssdev->state != OMAP_DSS_DISPLAY_ACTIVE)
 		return;
+	if(is_nt35510_spi_shutdown == 1)
+	{
+		printk("[%s] skip omapdss_dpi_display_disable..\n", __func__); 
+		return;
+	}
 	nt35510_lcd_poweroff();
 	if (dssdev->platform_disable)
 		dssdev->platform_disable(dssdev);
@@ -910,46 +916,46 @@ void nt35510_ldi_poweroff_sony_a_si(void)
 
 void lcd_hydis_gamma1(void)
 {
-		spi1writedata(0x00);		
+	spi1writedata(0x00);
 	spi1writedata(0x37);
-		spi1writedata(0x00);
+	spi1writedata(0x00);
 	spi1writedata(0x61);
-		spi1writedata(0x00);					
+	spi1writedata(0x00);
 	spi1writedata(0x92);
-		spi1writedata(0x00);
+	spi1writedata(0x00);
 	spi1writedata(0xB4);
-		spi1writedata(0x00);
+	spi1writedata(0x00);
 	spi1writedata(0xCF);
-		spi1writedata(0x00);		
-	spi1writedata(0xF6);
 	spi1writedata(0x01);
-	spi1writedata(0x2F);
+	spi1writedata(0x06);
 	spi1writedata(0x01);
-	spi1writedata(0x7F);
+	spi1writedata(0x41);
 	spi1writedata(0x01);
-	spi1writedata(0x97);
+	spi1writedata(0x8A);
 	spi1writedata(0x01);
-	spi1writedata(0xC0);
+	spi1writedata(0xA6);
 	spi1writedata(0x01);
-	spi1writedata(0xE5);
+	spi1writedata(0xD1);
 	spi1writedata(0x02);
+	spi1writedata(0x01);
+	spi1writedata(0x02);
+	spi1writedata(0x3D);
+	spi1writedata(0x02);
+	spi1writedata(0x77);
+	spi1writedata(0x02);
+	spi1writedata(0x79);
+	spi1writedata(0x02);
+	spi1writedata(0xA5);
+	spi1writedata(0x02);
+	spi1writedata(0xD1);
+	spi1writedata(0x02);
+	spi1writedata(0xF9);
+	spi1writedata(0x03);
 	spi1writedata(0x25);
-	spi1writedata(0x02);
-	spi1writedata(0x5E);
-	spi1writedata(0x02);
-	spi1writedata(0x60);
-	spi1writedata(0x02);
-	spi1writedata(0x87);
-	spi1writedata(0x02);
-	spi1writedata(0xBE);
-	spi1writedata(0x02);
-	spi1writedata(0xE2);
 	spi1writedata(0x03);
-	spi1writedata(0x0F);
+	spi1writedata(0x43);
 	spi1writedata(0x03);
-	spi1writedata(0x30);
-	spi1writedata(0x03);
-	spi1writedata(0x5C);
+	spi1writedata(0x6E);
 	spi1writedata(0x03);
 	spi1writedata(0x77);
 	spi1writedata(0x03);
@@ -965,46 +971,46 @@ void lcd_hydis_gamma1(void)
 }
 void lcd_hydis_gamma2(void)
 {
-		spi1writedata(0x00);
+	spi1writedata(0x00);
 	spi1writedata(0x37);
-		spi1writedata(0x00);
+	spi1writedata(0x00);
 	spi1writedata(0x50);
-		spi1writedata(0x00);
+	spi1writedata(0x00);
 	spi1writedata(0x89);
-		spi1writedata(0x00);
+	spi1writedata(0x00);
 	spi1writedata(0xA9);
-		spi1writedata(0x00);		
+	spi1writedata(0x00);
 	spi1writedata(0xC0);
-		spi1writedata(0x00);
-	spi1writedata(0xF6);
 	spi1writedata(0x01);
-	spi1writedata(0x14);
+	spi1writedata(0x06);
 	spi1writedata(0x01);
-	spi1writedata(0x48);
+	spi1writedata(0x26);
 	spi1writedata(0x01);
-	spi1writedata(0x6B);
+	spi1writedata(0x54);
 	spi1writedata(0x01);
-	spi1writedata(0xA7);
+	spi1writedata(0x79);
 	spi1writedata(0x01);
-	spi1writedata(0xD3);
+	spi1writedata(0xB8);
+	spi1writedata(0x01);
+	spi1writedata(0xDF);
 	spi1writedata(0x02);
-	spi1writedata(0x17);
+	spi1writedata(0x2F);
 	spi1writedata(0x02);
-	spi1writedata(0x4F);
+	spi1writedata(0x68);
 	spi1writedata(0x02);
-	spi1writedata(0x51);
+	spi1writedata(0x6A);
 	spi1writedata(0x02);
-	spi1writedata(0x86);
+	spi1writedata(0xA3);
 	spi1writedata(0x02);
-	spi1writedata(0xBD);
+	spi1writedata(0xE0);
 	spi1writedata(0x02);
-	spi1writedata(0xE2);
+	spi1writedata(0xF9);
 	spi1writedata(0x03);
-	spi1writedata(0x0F);
+	spi1writedata(0x25);
 	spi1writedata(0x03);
-		spi1writedata(0x30);
+	spi1writedata(0x43);
 	spi1writedata(0x03);
-	spi1writedata(0x5C);
+	spi1writedata(0x6E);
 	spi1writedata(0x03);
 	spi1writedata(0x77);
 	spi1writedata(0x03);
@@ -1033,22 +1039,22 @@ void nt35510_ldi_poweron_hydis(void)
 	spi1writedata(0x01);	
 
 	/* Test Commands */
-		spi1writeindex(0xF3);
-		spi1writedata(0x00);
-		spi1writedata(0x32);
-		spi1writedata(0x00);
-		spi1writedata(0x38);		
+	spi1writeindex(0xF3);
+	spi1writedata(0x00);
+	spi1writedata(0x32);
+	spi1writedata(0x00);
+	spi1writedata(0x38);		
 	spi1writedata(0x31);
-		spi1writedata(0x08);
-		spi1writedata(0x11);
-		spi1writedata(0x00);
+	spi1writedata(0x08);
+	spi1writedata(0x11);
+	spi1writedata(0x00);
 
 	/* Manufacture Command Set Selection */
-		spi1writeindex(0xF0);
-		spi1writedata(0x55);
-		spi1writedata(0xAA);
-		spi1writedata(0x52);
-		spi1writedata(0x08);		
+	spi1writeindex(0xF0);
+	spi1writedata(0x55);
+	spi1writedata(0xAA);
+	spi1writedata(0x52);
+	spi1writedata(0x08);		
 	spi1writedata(0x00);	
 
 	/* SEC Setting */	
@@ -1096,7 +1102,7 @@ void nt35510_ldi_poweron_hydis(void)
 
 	/* Display Timing Control */
 	spi1writeindex(0xBD);
-		spi1writedata(0x01);	
+	spi1writedata(0x01);			
 	spi1writedata(0x84);		
 	spi1writedata(0x06);
 	spi1writedata(0x50);
@@ -1109,7 +1115,7 @@ void nt35510_ldi_poweron_hydis(void)
 	spi1writedata(0x06);
 // ]] User Set
 
-// [[ Power Set	
+// [[ Power Set
 	spi1writeindex(0xF0);
 	spi1writedata(0x55);
 	spi1writedata(0xAA);
@@ -1117,8 +1123,8 @@ void nt35510_ldi_poweron_hydis(void)
 	spi1writedata(0x08);
 	spi1writedata(0x01);
 
-		spi1writeindex(0xB0);		
-		spi1writedata(0x05);			 
+	spi1writeindex(0xB0);
+	spi1writedata(0x05);
 	spi1writedata(0x05);
 	spi1writedata(0x05);
 
@@ -1136,17 +1142,17 @@ void nt35510_ldi_poweron_hydis(void)
 	spi1writedata(0x25);
 	spi1writedata(0x25);
 	spi1writedata(0x25);
-		
+
 	spi1writeindex(0xB3);
 	spi1writedata(0x0B);
 	spi1writedata(0x0B);
 	spi1writedata(0x0B);
-				
-		spi1writeindex(0xB9);			
-		spi1writedata(0x34);
-		spi1writedata(0x34);		
-		spi1writedata(0x34);
-				
+
+	spi1writeindex(0xB9);
+	spi1writedata(0x34);
+	spi1writedata(0x34);
+	spi1writedata(0x34);
+
 	spi1writeindex(0xBF);
 	spi1writedata(0x01);
 
@@ -1154,12 +1160,12 @@ void nt35510_ldi_poweron_hydis(void)
 	spi1writedata(0x08);
 	spi1writedata(0x08);
 	spi1writedata(0x08);
-		
-		spi1writeindex(0xBA);
-		spi1writedata(0x24);
-		spi1writedata(0x24);
-		spi1writedata(0x24);
-		
+
+	spi1writeindex(0xBA);
+	spi1writedata(0x14);
+	spi1writedata(0x14);
+	spi1writedata(0x14);
+
 	spi1writeindex(0xB4);
 	spi1writedata(0x2E);
 	spi1writedata(0x2E);
@@ -1167,25 +1173,35 @@ void nt35510_ldi_poweron_hydis(void)
 
 	spi1writeindex(0xBC);
 	spi1writedata(0x00);
-	spi1writedata(0x68);
+	spi1writedata(0x50);
 	spi1writedata(0x00);
 
 	spi1writeindex(0xBD);
 	spi1writedata(0x00);
-	spi1writedata(0x7C);
+	spi1writedata(0x60);
 	spi1writedata(0x00);
 
-		spi1writeindex(0xBE);
-		spi1writedata(0x00);				
-	spi1writedata(0x45);
+	spi1writeindex(0xBE);
+	spi1writedata(0x00);
+	spi1writedata(0x40);
+
+	spi1writeindex(0xCE);
+	spi1writedata(0x00);
+	spi1writedata(0x00);
+	spi1writedata(0x00);
+	spi1writedata(0x00);
+	spi1writedata(0x00);
+	spi1writedata(0x00);
+	spi1writedata(0x00);
+
 // ]] P S
 
 // [[ Gamma Control
 	spi1writeindex(0xD0);
-	spi1writedata(0x0B);
+	spi1writedata(0x09);
 	spi1writedata(0x14);
-	spi1writedata(0x0A);
-	spi1writedata(0x0E);
+	spi1writedata(0x07);
+	spi1writedata(0x0D);
 
 	spi1writeindex(0xD1);
 	lcd_hydis_gamma1();
@@ -1199,7 +1215,6 @@ void nt35510_ldi_poweron_hydis(void)
 	lcd_hydis_gamma2();
 	spi1writeindex(0xD6);
 	lcd_hydis_gamma2();
-
 // ]] Gamma Control
 		
 // [[
@@ -1559,7 +1574,7 @@ void nt35510_lcd_poweroff(void)
 {
 	if(current_panel==0) // Sony
 		nt35510_ldi_poweroff_sony();
-	else if(current_panel==1) // Hitachi
+	else if(current_panel==1 || current_panel==5) // Hitachi 20mA, 17mA
 		nt35510_ldi_poweroff_hitachi();
 	else if(current_panel==2) // Hydis
 		nt35510_ldi_poweroff_hydis();
@@ -1607,7 +1622,7 @@ void nt35510_lcd_poweron(void)
 
 	if(current_panel==0)	// Sony
 		nt35510_ldi_poweron_sony();
-	else if(current_panel==1) // Hitachi
+	else if(current_panel==1 || current_panel==5) // Hitachi 20mA, 17mA
 		nt35510_ldi_poweron_hitachi();
 	else if(current_panel==2) // Hydis
 		nt35510_ldi_poweron_hydis();
@@ -1621,6 +1636,32 @@ void nt35510_lcd_poweron(void)
 	return;
 }
 
+static ssize_t nt35510_sysfs_store_lcd_power(struct device *dev,
+				       struct device_attribute *attr,
+				       const char *buf, size_t len)
+{
+	int rc;
+	int lcd_enable;
+
+	dev_info(dev, "nt35510_sysfs_store_lcd_power\n");
+
+	rc = strict_strtoul(buf, 0, (unsigned long *)&lcd_enable);
+	if (rc < 0)
+		return rc;
+
+	if(lcd_enable) {
+		nt35510_lcd_poweron();
+	}
+	else {
+		nt35510_lcd_poweroff();
+	}
+
+	return len;
+}
+
+static DEVICE_ATTR(lcd_power, 0664,
+		NULL, nt35510_sysfs_store_lcd_power);
+
 // [[ backlight control 
 static int current_intensity = 108;	// DEFAULT BRIGHTNESS
 static DEFINE_SPINLOCK(aat1402_bl_lock);
@@ -1631,8 +1672,19 @@ static void aat1402_set_brightness(void)
 	//spin_lock_irqsave(&aat1402_bl_lock, flags);
 	//spin_lock(&aat1402_bl_lock);
 
-	if(current_panel==1)	// if Hitachi
+	if(current_panel==1 || current_panel==5)	// if Hitachi 20mA, 17mA
 	{
+		int orig_intensity = current_intensity;
+
+		if(current_intensity>=108)
+			current_intensity = ((current_intensity-108)*(216-91))/(255-108) + 91;
+		else if(current_intensity>=34)
+			current_intensity = ((current_intensity-34)*(91-29))/(108-34) + 29;
+		else if(current_intensity>=20)
+			current_intensity = ((current_intensity-20)*(29-17))/(34-20) + 17;
+
+		printk(KERN_DEBUG" HITACHI PANEL(%d)! orig_intensity=%d, current_intensity=%d\n", current_panel, orig_intensity, current_intensity);
+		
 		spi1writeindex(0xB0);
 		spi1writedata(0x02);
 
@@ -1644,6 +1696,8 @@ static void aat1402_set_brightness(void)
 		
 		spi1writeindex(0xB0);
 		spi1writedata(0x03);
+
+		current_intensity= orig_intensity;		
 	}
 	else if(current_panel==3) // if SMD
 	{
@@ -1710,6 +1764,7 @@ static int nt35510_spi_probe(struct spi_device *spi)
 {
     struct backlight_properties props;
      int status =0;
+	 int ret;
 		
 	printk(KERN_INFO " **** nt35510_spi_probe.\n");
 	nt35510lcd_spi = spi;
@@ -1728,7 +1783,11 @@ static int nt35510_spi_probe(struct spi_device *spi)
 	bd = backlight_device_register("omap_bl", &spi->dev, NULL, &aat1402_bl_ops, &props);
 	bd->props.max_brightness = 255;
 	bd->props.brightness = 125;
-	
+
+	ret = device_create_file(&(spi->dev), &dev_attr_lcd_power);
+	if (ret < 0)
+		dev_err(&(spi->dev), "failed to add sysfs entries\n");
+		
 #ifndef CONFIG_FB_OMAP_BOOTLOADER_INIT
 	lcd_enabled = 0;
 	nt35510_lcd_poweron();
@@ -1749,6 +1808,7 @@ static int nt35510_spi_remove(struct spi_device *spi)
 static void nt35510_spi_shutdown(struct spi_device *spi)
 {
 	printk("*** First power off LCD.\n");
+	is_nt35510_spi_shutdown = 1;
 	nt35510_lcd_poweroff();
 	printk("*** power off - backlight.\n");
 	gpio_set_value(OMAP_GPIO_LCD_EN_SET, GPIO_LEVEL_LOW);
@@ -1814,3 +1874,4 @@ static void __exit nt35510_lcd_exit(void)
 module_init(nt35510_lcd_init);
 module_exit(nt35510_lcd_exit);
 MODULE_LICENSE("GPL");
+

@@ -171,10 +171,6 @@ func_cont:
 	 * non-mailbox interrupt occurs, that DPC will run and break CS. Hence
 	 * we disable ALL DPCs. We will try to disable ONLY IO DPC later. */
 	spin_lock_bh(&chnl_mgr_obj->chnl_mgr_lock);
-	if (dev_ctxt->dw_brd_state == BRD_DSP_HIBERNATION ||
-	    dev_ctxt->dw_brd_state == BRD_HIBERNATION) {
-		omap_mbox_restore_ctx(dev_ctxt->mbox);
-	}
 	omap_mbox_disable_irq(dev_ctxt->mbox, IRQ_RX);
 	if (pchnl->chnl_type == CHNL_PCPY) {
 		/* This is a processor-copy channel. */
@@ -514,8 +510,9 @@ int bridge_chnl_flush_io(struct chnl_object *chnl_obj, u32 dwTimeOut)
 			 * timeout: */
 			while (!LST_IS_EMPTY(pchnl->pio_requests) &&
 			       DSP_SUCCEEDED(status)) {
-			       status = bridge_chnl_get_ioc(chnl_obj, dwTimeOut,
-							    &chnl_ioc_obj);
+				status = bridge_chnl_get_ioc(chnl_obj,
+							     dwTimeOut,
+							     &chnl_ioc_obj);
 				if (DSP_FAILED(status))
 					continue;
 

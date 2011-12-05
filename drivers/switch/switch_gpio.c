@@ -35,6 +35,9 @@
 #include "./switch_omap_gpio.h"
 
 //#define CONFIG_DEBUG_SEC_HEADSET
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )
+#define DISTINCTION_3POLE_4POLE_USE_SENDEND
+#endif
 
 #ifdef CONFIG_DEBUG_SEC_HEADSET
 #define SEC_HEADSET_DBG(fmt, arg...) printk(KERN_INFO "[HEADSET] %s () " fmt "\r\n", __func__, ## arg)
@@ -43,7 +46,11 @@
 #endif
 
 #define HEADSET_ATTACH_COUNT		3
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )
+#define HEADSET_DETACH_COUNT		5
+#else
 #define HEADSET_DETACH_COUNT		2
+#endif
 #define HEADSET_CHECK_TIME			get_jiffies_64() + (HZ/20)// 1000ms / 20 = 50ms
 #define SEND_END_ENABLE_TIME 		get_jiffies_64() + (HZ*2)// 1000ms * 2 = 2sec
 #define WAKE_LOCK_TIME 			(HZ*2)// 1000ms  = 2sec
@@ -111,12 +118,20 @@ static int get_t2adc_data( int ch )
     int ret = 0;
     int sendend_state = 0;
 
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )
+	sendend_state = gpio_get_value(OMAP_GPIO_EAR_ADC_3_5);
+#else	
 	sendend_state = gpio_get_value(EAR_KEY_GPIO);
+#endif	
 	
 	printk("3pole headset detecing use sendend %d\n", sendend_state);
 	
 	if(sendend_state)
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )	
+		return 171;
+#else		
 		return 101;
+#endif		
 	else
 		return 0;
 }
@@ -161,10 +176,19 @@ static void ear_adc_caculrator(struct work_struct *work)
 	
 	if (state)
 	{
+		if(headset_status != HEADSET_DISCONNET){
+			printk("[Headset] Headset is not disconnect before attach\n");
+			switch_set_state(&data->sdev,HEADSET_DISCONNET);
+			headset_status = HEADSET_DISCONNET;
+		}
 		adc = get_t2adc_data(2);
 
 		#ifndef USE_ONLY_AS_4POLE
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )
+		if(adc > 170)
+#else		
 		if(adc > 230)
+#endif		
 		#endif
 		{	
 			switch_set_state(&data->sdev,HEADSET_4POLE_WITH_MIC);

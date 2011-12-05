@@ -115,7 +115,7 @@ ssize_t pwmvalue_store(struct device *dev, struct device_attribute *attr, const 
 	return size;
 }
 
-static DEVICE_ATTR(pwmvalue, S_IRUGO | S_IWUSR | S_IWOTH | S_IXOTH, pwmvalue_show, pwmvalue_store);
+static DEVICE_ATTR(pwmvalue, S_IRUGO | S_IWUSR, pwmvalue_show, pwmvalue_store);
 
 /*
 static irqreturn_t vibtonz_omap2_gp_timer_interrupt(int irq,void *dev_id)

@@ -28,15 +28,19 @@
 #include <linux/clk.h>
 #include <linux/mmc/host.h>
 #include <linux/mmc/core.h>
+#include <linux/mmc/mmc.h>
 #include <linux/io.h>
 #include <linux/semaphore.h>
 #include <linux/gpio.h>
 #include <linux/regulator/consumer.h>
 #include <linux/pm_runtime.h>
+#include <linux/i2c/twl.h>
 #ifdef CONFIG_PM
 #include <plat/omap-pm.h>
 #endif
 
+
+int suspend_debug = 0 ;
 
 #include <plat/dma.h>
 #include <mach/hardware.h>
@@ -72,6 +76,7 @@ EXPORT_SYMBOL(mmc_is_available);
 #define DTO_MASK		0x000F0000
 #define DTO_SHIFT		16
 #define INT_EN_MASK		0x307F0033
+#define DTO_ENABLE		(1 << 20)
 #define BWR_ENABLE		(1 << 4)
 #define BRR_ENABLE		(1 << 5)
 #define INIT_STREAM		(1 << 1)
@@ -147,7 +152,7 @@ EXPORT_SYMBOL(mmc_is_available);
 #define DRIVER_NAME		"mmci-omap-hs"
 
 /* Timeouts for entering power saving states on inactivity, msec */
-#define OMAP_MMC_DISABLED_TIMEOUT	100
+#define OMAP_MMC_DISABLED_TIMEOUT	1
 #define OMAP_MMC_SLEEP_TIMEOUT		1000
 #define OMAP_MMC_OFF_TIMEOUT		8000
 
@@ -321,6 +326,18 @@ static int omap_hsmmc_1_set_power(struct device *dev, int slot, int power_on,
 
 	return ret;
 }
+
+u8 omap_mmc1_ldo_status(void)
+{
+	u8 value, value1;
+	twl_i2c_read_u8(TWL4030_MODULE_PM_RECEIVER, &value, TWL4030_VMMC1_DEV_GRP);
+	twl_i2c_read_u8(TWL4030_MODULE_PM_RECEIVER, &value1, TWL4030_VMMC1_DEDICATED);
+	printk("VMMC1 GRP status = 0x%02x  VMMC1 DEDI status = 0x%02x \n", value, value1);
+	if(value == 0x00)
+		panic("VMMC1 LDO panic \n");
+}
+
+EXPORT_SYMBOL(omap_mmc1_ldo_status);
 
 static int twl_iNand_set_power(struct device *dev, int slot, int power_on, int vdd)
 {
@@ -497,10 +514,6 @@ static int omap_hsmmc_reg_get(struct omap_hsmmc_host *host)
 		printk("%s with id%d is registered with twl_iNand_set_power \n", 
 					mmc_hostname(host->mmc), host->id);
 		mmc_slot(host).set_power = twl_iNand_set_power;
-		if(gpio_request(OMAP_GPIO_MASSMEMORY, "iNand_Power_source") <0){
-			printk(KERN_ERR"Failed to get OMAP_GPIO_MASSMEMROY_EN pin \n");
-			return -1;
-		}
 		gpio_direction_output(OMAP_GPIO_MASSMEMORY, 1);
 		//mmc_slot(host).set_sleep = omap_hsmmc_23_set_sleep;
 		break;
@@ -670,6 +683,11 @@ static void omap_hsmmc_enable_irq(struct omap_hsmmc_host *host)
 	else
 		irq_mask = INT_EN_MASK;
 
+#ifdef CONFIG_MMC_DISCARD
+	/* Disable timeout for erases */
+	if (host->cmd->opcode == MMC_ERASE)
+		irq_mask &= ~DTO_ENABLE;
+#endif
 	OMAP_HSMMC_WRITE(host, STAT, STAT_CLEAR);
 	OMAP_HSMMC_WRITE(host, ISE, irq_mask);
 	OMAP_HSMMC_WRITE(host, IE, irq_mask);
@@ -1166,6 +1184,7 @@ static void omap_hsmmc_do_irq(struct omap_hsmmc_host *host, int status)
 {
 	struct mmc_data *data;
 	int end_cmd = 0, end_trans = 0;
+	unsigned int cmd = 0;
 
 	if (!host->req_in_progress) {
 		do {
@@ -1180,7 +1199,9 @@ static void omap_hsmmc_do_irq(struct omap_hsmmc_host *host, int status)
 	dev_dbg(mmc_dev(host->mmc), "IRQ Status is %x\n", status);
 
 	if (status & ERR) {
-	printk("MMC returns error = %08x \n", status);
+	cmd = OMAP_HSMMC_READ(host, CMD);
+	cmd = ((cmd>>24)&0x3f);
+	printk("MMC returns error = %08x for cmd = %d \n", status, cmd);
 #ifdef CONFIG_MMC_DEBUG
 		omap_hsmmc_report_irq(host, status);
 #endif
@@ -1823,6 +1844,9 @@ if((host->id == OMAP_MMC1_DEVID) || (host->id == OMAP_MMC2_DEVID) || (host->id =
 				printk("***REPORT TO TI on OMAPS00240323***\n");
 		              printk("host->dpm_state = %d   \n  power_saving = %d \n ",host->dpm_state,(mmc_slot(host).power_saving));
 				printk("MMC1 interface clk corrected %x   and fclk  %x  \n",core_iclk,core_fclk);
+				printk(" dmp= %d enabled %d, claimed %d, claim_cnt %d, nesting_cnt %d en_dis_recurs %d \n",
+				host->dpm_state, mmc->enabled, mmc->claimed, mmc->claim_cnt, 
+				mmc->nesting_cnt, mmc->en_dis_recurs);
 			}
         		core_clk_mmc1 = 0 ;
 			core_clk_mmc1 = (core_fclk & (1<<24));   // MMC1
@@ -1833,6 +1857,9 @@ if((host->id == OMAP_MMC1_DEVID) || (host->id == OMAP_MMC2_DEVID) || (host->id =
 				printk("***REPORT TO TI on OMAPS00240323***\n");
 		              printk("host->dpm_state = %d   \n  power_saving = %d \n ",host->dpm_state,(mmc_slot(host).power_saving));
 				printk("MMC1 interface clk fclk corrected %x   iclk  %x \n",core_fclk,core_iclk);
+				printk(" dmp= %d enabled %d, claimed %d, claim_cnt %d, nesting_cnt %d en_dis_recurs %d \n",
+				host->dpm_state, mmc->enabled, mmc->claimed, mmc->claim_cnt, 
+				mmc->nesting_cnt, mmc->en_dis_recurs);
 			}
 			
 				
@@ -1852,6 +1879,9 @@ if((host->id == OMAP_MMC1_DEVID) || (host->id == OMAP_MMC2_DEVID) || (host->id =
 			       printk("***REPORT TO TI on OMAPS00240323***\n");
 		              printk("host->dpm_state = %d   \n  power_saving = %d \n ",host->dpm_state,(mmc_slot(host).power_saving));
 				printk("MMC2 interface clk corrected %x  and fclk  %x  \n",core_iclk,core_fclk);
+				printk(" dmp= %d enabled %d, claimed %d, claim_cnt %d, nesting_cnt %d en_dis_recurs %d \n",
+				host->dpm_state, mmc->enabled, mmc->claimed, mmc->claim_cnt, 
+				mmc->nesting_cnt, mmc->en_dis_recurs);
 			}
 			core_clk_mmc2 = 0;
 		    	core_clk_mmc2 = (core_fclk & (1<<25));  // MMC2
@@ -1862,6 +1892,9 @@ if((host->id == OMAP_MMC1_DEVID) || (host->id == OMAP_MMC2_DEVID) || (host->id =
 				 printk("***REPORT TO TI on OMAPS00240323***\n");
 		              printk("host->dpm_state = %d   \n  power_saving = %d \n ",host->dpm_state,(mmc_slot(host).power_saving));
 				printk("MMC2 interface clk corrected %x   iclk  %x \n",core_fclk,core_iclk);
+				printk(" dmp= %d enabled %d, claimed %d, claim_cnt %d, nesting_cnt %d en_dis_recurs %d \n",
+				host->dpm_state, mmc->enabled, mmc->claimed, mmc->claim_cnt, 
+				mmc->nesting_cnt, mmc->en_dis_recurs);
 			}
 			
 			break;
@@ -1883,6 +1916,9 @@ if((host->id == OMAP_MMC1_DEVID) || (host->id == OMAP_MMC2_DEVID) || (host->id =
 				 printk("***REPORT TO TI on OMAPS00240323***\n");
 		               printk("host->dpm_state = %d   \n  power_saving = %d \n ",host->dpm_state,(mmc_slot(host).power_saving));
 				 printk("MMC3 interface clk corrected %x  and fclk  %x  \n",core_iclk,core_fclk);
+				printk(" dmp= %d enabled %d, claimed %d, claim_cnt %d, nesting_cnt %d en_dis_recurs %d \n",
+				host->dpm_state, mmc->enabled, mmc->claimed, mmc->claim_cnt, 
+				mmc->nesting_cnt, mmc->en_dis_recurs);
 			}
 			core_clk_mmc2 = 0;
 		    	core_clk_mmc2 = (core_fclk & (1<<30));  // MMC3
@@ -1893,6 +1929,9 @@ if((host->id == OMAP_MMC1_DEVID) || (host->id == OMAP_MMC2_DEVID) || (host->id =
 			       printk("***REPORT TO TI on OMAPS00240323***\n");
 		        	printk("host->dpm_state = %d   \n  power_saving = %d \n ",host->dpm_state,(mmc_slot(host).power_saving));
 				printk("MMC3 interface clk corrected %x   iclk  %x \n",core_fclk,core_iclk);
+				printk(" dmp= %d enabled %d, claimed %d, claim_cnt %d, nesting_cnt %d en_dis_recurs %d \n",
+				host->dpm_state, mmc->enabled, mmc->claimed, mmc->claim_cnt, 
+				mmc->nesting_cnt, mmc->en_dis_recurs);
 			}
 			
 
@@ -2092,36 +2131,6 @@ static void omap_hsmmc_conf_bus_power(struct omap_hsmmc_host *host)
 {
 	u32 hctl, capa, value;
 
-	//TI patch start: Non-linefetch abort
-	int ModuleVal = 0;	//TI Patch Start: I2C non-line fetch abort prevention
-	//TI patch end
-
-
-	//TI Patch Start: I2C non-line fetch abort prevention
-	switch(host->id)
-	{
-		case OMAP_MMC1_DEVID:
-			ModuleVal = NONLINE_FETCH_MMC1_MODULE_VAL;
-			//printk("%s++ case 1\n", __func__);
-			break;
-		case OMAP_MMC2_DEVID:
-			ModuleVal = NONLINE_FETCH_MMC2_MODULE_VAL;
-			//printk("%s++ case 2\n", __func__);
-			break;
-		case OMAP_MMC3_DEVID:
-			ModuleVal = NONLINE_FETCH_MMC3_MODULE_VAL;
-		//	printk("%s++ case 3\n", __func__);
-			break;
-		default:
-			printk("ERR: %s, Line: %d, unknown MMC ID\n", __func__, __LINE__);
-			break;
-	}
-
-	PREVENT_NONLINE_FETCH_ABORT_START(CM_AUTOIDLE1_CORE_LOCAL, CM_ICLKEN1_CORE_LOCAL, CM_FCLKEN1_CORE_LOCAL, ModuleVal);
-	nop();
-	//TI Patch end
-
-
 	/* Only MMC1 supports 3.0V */
 	if (mmc_slot(host).ocr_mask == MMC_VDD_165_195) {
 		hctl = SDVS18;
@@ -2151,10 +2160,6 @@ static void omap_hsmmc_conf_bus_power(struct omap_hsmmc_host *host)
 	/* Set SD bus power bit */
 	set_sd_bus_power(host);
 
-		
-	//TI patch start: Non-linefetch abort
-	PREVENT_NONLINE_FETCH_ABORT_END(CM_AUTOIDLE1_CORE_LOCAL, ModuleVal); 
-	//TI patch end	
 }
 
 /*
@@ -2199,7 +2204,9 @@ static int omap_hsmmc_disabled_to_sleep(struct omap_hsmmc_host *host)
 		return 0;
 
 	pm_runtime_get_sync(host->dev);
-
+	if(host->id == OMAP_MMC2_DEVID) {
+		new_state = REGSLEEP;
+	} else {
 	if (mmc_card_can_sleep(host->mmc)) {
 		err = mmc_card_sleep(host->mmc);
 		if (err < 0) {
@@ -2212,6 +2219,7 @@ static int omap_hsmmc_disabled_to_sleep(struct omap_hsmmc_host *host)
 		new_state = CARDSLEEP;
 	} else {
 		new_state = REGSLEEP;
+		}
 	}
 	if (mmc_slot(host).set_sleep)
 		mmc_slot(host).set_sleep(host->dev, host->slot_id, 1, 0,
@@ -2292,8 +2300,10 @@ static int omap_hsmmc_sleep_to_enabled(struct omap_hsmmc_host *host)
 	if (mmc_slot(host).set_sleep)
 		mmc_slot(host).set_sleep(host->dev, host->slot_id, 0,
 			 host->vdd, host->dpm_state == CARDSLEEP);
-	if (mmc_card_can_sleep(host->mmc))
-		mmc_card_awake(host->mmc);
+	if(host->id != OMAP_MMC2_DEVID) {
+		if (mmc_card_can_sleep(host->mmc))
+			mmc_card_awake(host->mmc); 
+	}
 
 	dev_dbg(mmc_dev(host->mmc), "%s -> ENABLED\n",
 		host->dpm_state == CARDSLEEP ? "CARDSLEEP" : "REGSLEEP");
@@ -2327,6 +2337,11 @@ static int omap_hsmmc_enable(struct mmc_host *mmc)
 {
 	struct omap_hsmmc_host *host = mmc_priv(mmc);
 	int ret;
+
+if(suspend_debug)
+		{
+		printk("omap_hsmmc_enable state %d mmc %d \n\n",host->dpm_state,host->id);
+		}
 
 	switch (host->dpm_state) {
 	case DISABLED:
@@ -2364,6 +2379,12 @@ static int omap_hsmmc_enable(struct mmc_host *mmc)
 static int omap_hsmmc_disable(struct mmc_host *mmc, int lazy)
 {
 	struct omap_hsmmc_host *host = mmc_priv(mmc);
+
+if(suspend_debug)
+		{
+		printk("omap_hsmmc_disable state %d mmc %d \n\n",host->dpm_state,host->id);
+		}
+
 
 	switch (host->dpm_state) {
 	case ENABLED: {
@@ -2698,11 +2719,16 @@ static int __init omap_hsmmc_probe(struct platform_device *pdev)
 
 	if (mmc_slot(host).nonremovable)
 		mmc->caps |= MMC_CAP_NONREMOVABLE;
+	#ifdef CONFIG_MMC_DISCARD
+ 	   mmc->caps |= MMC_CAP_ERASE;
+	#endif 
 #ifdef _MMC_SAFE_ACCESS_
 	mmc_is_available = 1;
 #endif
+    mmc->pm_caps |= MMC_PM_KEEP_POWER;
 
 	omap_hsmmc_conf_bus_power(host);
+
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_DMA, "tx");
 	if (!res) {
@@ -2851,7 +2877,7 @@ static int omap_hsmmc_remove(struct platform_device *pdev)
 				host->adma_table, host->phy_adma_table);
 
 		mmc_host_disable(host->mmc);
-		pm_runtime_suspend(host->dev);
+		pm_runtime_disable(host->dev);
 
 		clk_put(host->fclk);
 		clk_put(host->iclk);
@@ -2879,6 +2905,13 @@ static int omap_hsmmc_suspend(struct device *dev)
 	int ret = 0;
 	struct platform_device *pdev = to_platform_device(dev);
 	struct omap_hsmmc_host *host = platform_get_drvdata(pdev);
+
+suspend_debug =1;
+
+	mmc_flush_scheduled_work();          // Mahesh non line fetch patch
+
+if(suspend_debug)
+	printk("omap_hsmmc_suspend mmc %d ++ \n\n",host->id);
 	
 	if (host && host->suspended)
 		return 0;
@@ -2926,6 +2959,8 @@ static int omap_hsmmc_suspend(struct device *dev)
 		}
 
 	}
+	if(suspend_debug)
+	printk("omap_hsmmc_suspend mmc %d -- \n\n",host->id);
 	return ret;
 }
 
@@ -2935,7 +2970,11 @@ static int omap_hsmmc_resume(struct device *dev)
 	int ret = 0;
 	struct platform_device *pdev = to_platform_device(dev);
 	struct omap_hsmmc_host *host = platform_get_drvdata(pdev);
-
+	
+if(suspend_debug)
+		{
+		printk("omap_hsmmc_resume mmc %d \n\n",host->id);
+		}
 	if (host && !host->suspended)
 		return 0;
 
@@ -2964,6 +3003,10 @@ static int omap_hsmmc_resume(struct device *dev)
 
 		mmc_host_lazy_disable(host->mmc);
 	}
+
+if(suspend_debug)
+	printk("omap_hsmmc_suspend mmc %d -- \n\n",host->id);
+suspend_debug =0;
 
 	return ret;
 

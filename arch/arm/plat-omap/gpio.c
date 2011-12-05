@@ -31,7 +31,10 @@
 #include <mach/irqs.h>
 #include <mach/gpio.h>
 #include <asm/mach/irq.h>
-#include <plat/control.h>    // Added GPIO GLITCH patch
+#include <plat/control.h>
+
+#include "../mach-omap2/mux.h"
+
 
 /*
  * OMAP1510 GPIO registers
@@ -151,23 +154,10 @@ struct omap_gpio_regs {
 };
 
 #ifdef CONFIG_ARCH_OMAP3
-#define GPIO_GLITCH
-#define OMAP_NR_GPIOS 6
 
-#define OMAP34XX_PAD_SAFE_MODE 0x7
-#define OMAP34XX_PAD_IN_PU_GPIO 0x11c
-#define OMAP34XX_PAD_IN_PD_GPIO 0x10c
-
-#define OMAP_MUX_MODE0      0
-#define OMAP_MUX_MODE1      1
-#define OMAP_MUX_MODE2      2
-#define OMAP_MUX_MODE3      3
-#define OMAP_MUX_MODE4      4
-#define OMAP_MUX_MODE5      5
-#define OMAP_MUX_MODE6      6
-#define OMAP_MUX_MODE7      7
-
-static struct omap_gpio_regs gpio_context[OMAP_NR_GPIOS];
+#define OMAP34XX_PAD_SAFE_MODE	0x7
+#define OMAP34XX_PAD_IN_PU_GPIO	0x11c
+#define OMAP34XX_PAD_IN_PD_GPIO	0x10c
 
 /* GPIO -> PAD init configuration struct */
 struct gpio_pad_range {
@@ -184,7 +174,7 @@ struct gpio_pad_range {
  * us that there is a range of GPIOs 34...43 which have their padconfigs
  * starting from offset 0x7a, i.e. gpio 34->0x7a, 35->0x7c, 36->0x7e ... etc.
  */
-static const struct gpio_pad_range gpio_pads_config[] = {
+static const struct __init gpio_pad_range zoom2_gpio_pads_config[] = {
 	{ 34, 43, 0x7a },
 	{ 44, 51, 0x9e },
 	{ 52, 59, 0xb0 },
@@ -213,6 +203,42 @@ static const struct gpio_pad_range gpio_pads_config[] = {
 	{ 31, 31, 0xa26 },
 };
 
+static const struct __init gpio_pad_range zoom3_gpio_pads_config[] = {
+	{ 34, 43, 0x7a },
+	{ 44, 51, 0x9e },
+	{ 52, 59, 0xb0 },
+	{ 60, 62, 0xc6 },
+	{ 63, 111, 0xce },
+	{ 167, 167, 0x130 },
+	{ 126, 126, 0x132 },
+	{ 112, 125, 0x134 },
+	{ 130, 166, 0x158 },
+	{ 120, 125, 0x1a2 },
+	{ 130, 131, 0x1ac },
+	{ 169, 169, 0x1b0 },
+	{ 188, 191, 0x1b2 },
+	{ 168, 168, 0x1be },
+	{ 183, 185, 0x1c0 },
+	{ 170, 182, 0x1c6 },
+	{ 186, 186, 0x1e2 },
+#if 0
+	/*
+	 * GPIOs 0..31 are managed by WKUP, so no need to save pad
+	 * configuration on suspend
+	 */
+	{   0,   0, 0x1e0 },
+	{  12,  29, 0x5d8 },
+	{   1,   1, 0xa06 },
+	{  30,  30, 0xa08 },
+	{   2,   5, 0xa0a },
+	{   7,   7, 0xa14 },
+	{   9,  10, 0xa18 },
+	{  11,  11, 0xa24 },
+	{  31,  31, 0xa26 },
+#endif
+	{ 127, 129, 0xa54 },
+};
+
 /* GPIO -> PAD config mapping for OMAP3 */
 struct gpio_pad {
 	s16 gpio;
@@ -220,13 +246,10 @@ struct gpio_pad {
 	u16 save;
 };
 
-#define OMAP34XX_GPIO_AMT	(32 * OMAP_NR_GPIOS)
+#define OMAP34XX_GPIO_AMT	(32 * OMAP34XX_NR_GPIOS)
 
 struct gpio_pad *gpio_pads;
-static u16 gpio_pad_map[OMAP34XX_GPIO_AMT];
-
-
-#endif
+#endif /* CONFIG_ARCH_OMAP3 */
 
 
 struct gpio_bank {
@@ -454,6 +477,7 @@ static void _set_gpio_dataout(struct gpio_bank *bank, int gpio, int enable)
 		WARN_ON(1);
 		return;
 	}
+
 	__raw_writel(l, reg);
 }
 
@@ -556,6 +580,7 @@ do {	\
 	__raw_writel(l, base + reg); \
 } while(0)
 
+#if 1
 void omap_set_gpio_dataout_in_sleep(int gpio,int value)
 {
 	//_set_gpio_dataout()
@@ -573,7 +598,7 @@ void omap_set_gpio_dataout_in_sleep(int gpio,int value)
 	
 }
 EXPORT_SYMBOL(omap_set_gpio_dataout_in_sleep);
-
+#endif 
 /**
  * _set_gpio_debounce - low level gpio debounce time
  * @bank: the gpio bank we're acting upon
@@ -1844,8 +1869,8 @@ static int __devinit omap_gpio_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static void omap_gpio_save_context(struct device *dev,u32 suspend);
-static void omap_gpio_restore_context(struct device *dev,u32 suspend);
+static void omap_gpio_save_context(struct device *dev);
+static void omap_gpio_restore_context(struct device *dev);
 
 static int omap_gpio_suspend(struct device *dev)
 {
@@ -2084,19 +2109,10 @@ static int gpio_bank_runtime_resume(struct device *dev)
 }
 
 /* save the registers of bank */
-static void omap_gpio_save_context(struct device *dev,u32 suspend)
+static void omap_gpio_save_context(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct gpio_bank *bank = &gpio_bank[pdev->id];
-	
-
-#ifdef GPIO_GLITCH
-       int n,i;
-	u16 offset, conf;
-	u32 out, pin;
-	struct gpio_pad *pad;
-	u32 tmp_oe[OMAP_NR_GPIOS];
-#endif
 
 	if (bank->method == METHOD_GPIO_24XX) {
 
@@ -2123,67 +2139,7 @@ static void omap_gpio_save_context(struct device *dev,u32 suspend)
 			__raw_readl(bank->base + OMAP24XX_GPIO_FALLINGDETECT);
 		bank->gpio_context.dataout =
 			__raw_readl(bank->base + OMAP24XX_GPIO_DATAOUT);
-                bank->gpio_context.setwkuena =
-			__raw_readl(bank->base + OMAP24XX_GPIO_SETWKUENA);
-		bank->gpio_context.setdataout =
-			__raw_readl(bank->base + OMAP24XX_GPIO_SETDATAOUT);
-#ifdef GPIO_GLITCH
-	for (i = 1; i < OMAP_NR_GPIOS; i++) 
-	{
-		struct gpio_bank *bank1 = &gpio_bank[i];
-	 	tmp_oe[i] = bank1->gpio_context.oe ;
-	 	gpio_context[i].dataout =  bank1->gpio_context.dataout ;
-	}
-	if(suspend)
-		{
-		if(bank->id == (OMAP_NR_GPIOS-1))
-		{
-		pad = gpio_pads;
-
-		if (pad == NULL)
-		return;
-		while (pad->gpio >= 0) {
-		/* n = gpio number, 0..191 */
-		n = pad->gpio;
-		/* i = gpio bank, 0..5 */
-		i = n >> 5;
-		/* offset of padconf register */
-		offset = pad->offset;
-		//bank = &gpio_bank[i];
-		/* bit position of gpio in the bank 0..31 */
-		pin = 1 << (n & 0x1f);
-
-		/* check if gpio is configured as output => need hack */
-		if (!(tmp_oe[i] & pin)) {
-
-			/* save current padconf setting */
-			pad->save = omap_ctrl_readw(offset);
-			out = gpio_context[i].dataout;
-		
-			if (out & pin)
-				/* High: PU + input */
-				conf = OMAP34XX_PAD_IN_PU_GPIO;
-			else
-				/* Low: PD + input */
-				conf = OMAP34XX_PAD_IN_PD_GPIO;
-			/* Set PAD to GPIO + input */
-			omap_ctrl_writew(conf, offset);
-			/* Set GPIO to input */
-			tmp_oe[i] |= pin;
-			__raw_writel(tmp_oe[i],
-					bank->base + OMAP24XX_GPIO_OE);
-			/* Set PAD to safe mode */
-			omap_ctrl_writew(conf | OMAP34XX_PAD_SAFE_MODE, offset);
-		}
-		else
-			pad->save = 0;
-		pad++;
-			}
-		}
-
-	}
-	#endif
-
+   
 	 
 	} else if (bank->method == METHOD_GPIO_44XX) {
 		bank->gpio_context.irqenable1 =
@@ -2209,16 +2165,13 @@ static void omap_gpio_save_context(struct device *dev,u32 suspend)
 	}
 }
 
-static void omap_gpio_restore_context(struct device *dev,u32 suspend)
+/* restore the required registers of bank 2-6 */
+static void omap_gpio_restore_context(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct gpio_bank *bank = &gpio_bank[pdev->id];
 
 	if (bank->method == METHOD_GPIO_24XX) {
-
-
-
-		
 		__raw_writel(bank->gpio_context.sysconfig,
 				bank->base + OMAP24XX_GPIO_SYSCONFIG);
 		__raw_writel(bank->gpio_context.irqenable1,
@@ -2229,6 +2182,8 @@ static void omap_gpio_restore_context(struct device *dev,u32 suspend)
 				bank->base + OMAP24XX_GPIO_WAKE_EN);
 		__raw_writel(bank->gpio_context.ctrl,
 				bank->base + OMAP24XX_GPIO_CTRL);
+		__raw_writel(bank->gpio_context.dataout,
+				bank->base + OMAP24XX_GPIO_DATAOUT);
 		__raw_writel(bank->gpio_context.oe,
 				bank->base + OMAP24XX_GPIO_OE);
 		__raw_writel(bank->gpio_context.leveldetect0,
@@ -2239,38 +2194,7 @@ static void omap_gpio_restore_context(struct device *dev,u32 suspend)
 				bank->base + OMAP24XX_GPIO_RISINGDETECT);
 		__raw_writel(bank->gpio_context.fallingdetect,
 				bank->base + OMAP24XX_GPIO_FALLINGDETECT);
-		__raw_writel(bank->gpio_context.dataout,
-				bank->base + OMAP24XX_GPIO_DATAOUT);
-		
-		__raw_writel(bank->gpio_context.setwkuena,
-				bank->base + OMAP24XX_GPIO_SETWKUENA);
-		__raw_writel(bank->gpio_context.setdataout,
-				bank->base + OMAP24XX_GPIO_SETDATAOUT);
-		
-#ifdef GPIO_GLITCH
-		
-		if(suspend)
-		{
-		if(bank->id == (OMAP_NR_GPIOS-1))
-		{
-		struct gpio_pad *pad;
-			int i;
-		
-			pad = gpio_pads;
-		
-			if (pad == NULL)
-				return;
-		
-			while (pad->gpio >= 0) {
-				if (pad->save)
-					{
-					omap_ctrl_writew(pad->save, pad->offset);
-					}
-				pad++;
-			}
-		}
-		}
-#endif
+
 
 	} else if (bank->method == METHOD_GPIO_44XX) {
 		__raw_writel(bank->gpio_context.irqenable1,
@@ -2296,13 +2220,88 @@ static void omap_gpio_restore_context(struct device *dev,u32 suspend)
 	}
 }
 
+#ifdef CONFIG_ARCH_OMAP3
+/* OMAP3 GPIO glitch work around */
+static void omap3_gpio_save_pad_context(void)
+{
+	struct gpio_bank *bank;
+	int i, n;
+	u16 offset, conf;
+	u32 out, pin;
+	struct gpio_pad *pad;
+	u32 tmp_oe[OMAP34XX_NR_GPIOS];
 
-void omap2_gpio_prepare_for_idle(bool save_context,u32 suspend)
+    
+	for (i = 1; i < OMAP34XX_NR_GPIOS; i++)
+		tmp_oe[i] = gpio_bank[i].gpio_context.oe;
+
+	pad = gpio_pads;
+	if (pad == NULL)
+		return;
+
+	while (pad->gpio >= 0) {
+		/* n = gpio number, 0..191 */
+		n = pad->gpio;
+		/* i = gpio bank, 0..5 */
+		i = n >> 5;
+
+		/* offset of padconf register */
+		offset = pad->offset;
+		bank = &gpio_bank[i];
+		/* bit position of gpio in the bank 0..31 */
+		pin = 1 << (n & 0x1f);
+
+		/* check if gpio is configured as output => need hack */
+		pad->save = 0;
+		if (!(tmp_oe[i] & pin)) {
+			/* save current padconf setting */
+			pad->save = omap_ctrl_readw(offset);
+			out = bank->gpio_context.dataout;
+			if (out & pin) {
+				/* High: PU + input */
+				conf = OMAP34XX_PAD_IN_PU_GPIO;
+			} else {
+				/* Low: PD + input */
+				conf = OMAP34XX_PAD_IN_PD_GPIO;
+			}
+
+			/* Set PAD to GPIO + input */
+			omap_ctrl_writew(conf, offset);
+			/* Set GPIO to input */
+			tmp_oe[i] |= pin;
+			__raw_writel(tmp_oe[i],
+					bank->base + OMAP24XX_GPIO_OE);
+		}
+
+		pad++;
+	}
+}
+
+static void omap3_gpio_restore_pad_context(void)
+{
+	struct gpio_pad *pad = gpio_pads;
+
+	if (pad == NULL)
+		return;
+
+	while (pad->gpio >= 0) {
+		if (pad->save)
+			omap_ctrl_writew(pad->save, pad->offset);
+
+		pad++;
+	}
+}
+#else
+static inline void omap3_gpio_save_pad_context(void) {};
+static inline void omap3_gpio_restore_pad_context(void) {};
+#endif /* CONFIG_ARCH_OMAP3 */
+
+void omap2_gpio_prepare_for_idle(bool save_context)
 {
 #if defined(CONFIG_PM_RUNTIME) && defined(CONFIG_ARCH_OMAP2PLUS)
 	int i;
 
-	for (i = 0; i < gpio_bank_count; i++) {
+	for (i = 1; i < gpio_bank_count; i++) {
 		struct gpio_bank *bank = &gpio_bank[i];
 		struct platform_device *pdev = to_platform_device(bank->dev);
 
@@ -2314,33 +2313,36 @@ void omap2_gpio_prepare_for_idle(bool save_context,u32 suspend)
 			continue;
 		gpio_bank_runtime_suspend(bank->dev);
 		if (save_context)
-		{
-		   omap_gpio_save_context(bank->dev,suspend);
+			   omap_gpio_save_context(bank->dev);
+    	       omap_device_idle(pdev);        
+       }
+		
+		if (save_context)
+		omap3_gpio_save_pad_context();
 	
-     	}
-		//  omap_device_idle(pdev);            // NEED to Be Revisited
-	}
+	
 #endif
 }
 
-void omap2_gpio_resume_after_idle(bool restore_context,u32 suspend)
+void omap2_gpio_resume_after_idle(bool restore_context)
 {
 #if defined(CONFIG_PM_RUNTIME) && defined(CONFIG_ARCH_OMAP2PLUS)
 	int i;
 
-	for (i = 0; i < gpio_bank_count; i++) {
+	for (i = 1; i < gpio_bank_count; i++) {
 		struct gpio_bank *bank = &gpio_bank[i];
 		if ((bank->off_mode_support) && (bank->mod_usage)) {
 			struct platform_device *pdev = to_platform_device(bank->dev);
-			//omap_device_enable(pdev);   // NEED to Be Revisited
+			omap_device_enable(pdev);  
 			if (restore_context)
 			{
-				omap_gpio_restore_context(bank->dev,suspend);
-			
+				omap_gpio_restore_context(bank->dev);
 			}
 			gpio_bank_runtime_resume(bank->dev);
 		}
 	}
+	if (restore_context)
+		omap3_gpio_restore_pad_context();
 
 	workaround_enabled = 0;
 #endif
@@ -2384,16 +2386,30 @@ arch_initcall(omap_gpio_sysinit);
 /*
  * Following pad init code in addition to the context / restore hooks are
  * needed to fix glitches in GPIO outputs during off-mode. See OMAP3
- * errate section 1.158
+ * errata i468.
  */
 static int __init omap3_gpio_pads_init(void)
 {
-	int i, j, min, max, gpio_amt;
+	u16 gpio_pad_map[OMAP34XX_GPIO_AMT];
+
+	const struct gpio_pad_range *gpio_pads_config;
+	int i, j, min, max, gpio_amt, n_gpio_configs;
 	u16 offset;
 
+	gpio_pads = NULL;
 	gpio_amt = 0;
 
-	for (i = 0; i < ARRAY_SIZE(gpio_pads_config); i++) {
+	if (cpu_is_omap3630()) {
+		gpio_pads_config = zoom3_gpio_pads_config;
+		n_gpio_configs = ARRAY_SIZE(zoom3_gpio_pads_config);
+	} else {
+		gpio_pads_config = zoom2_gpio_pads_config;
+		n_gpio_configs = ARRAY_SIZE(zoom2_gpio_pads_config);
+	}
+
+	memset(gpio_pad_map, 0x00, sizeof(gpio_pad_map));
+
+	for (i = 0; i < n_gpio_configs; i++) {
 		min = gpio_pads_config[i].min;
 		max = gpio_pads_config[i].max;
 		offset = gpio_pads_config[i].offset;
@@ -2409,7 +2425,8 @@ static int __init omap3_gpio_pads_init(void)
 			offset += 2;
 		}
 	}
-	gpio_pads = kmalloc(sizeof(struct gpio_pad) * (gpio_amt + 1),
+
+	gpio_pads = kzalloc(sizeof(struct gpio_pad) * (gpio_amt + 1),
 		GFP_KERNEL);
 
 	if (gpio_pads == NULL) {
@@ -2431,8 +2448,8 @@ static int __init omap3_gpio_pads_init(void)
 		}
 	}
 	gpio_pads[gpio_amt].gpio = -1;
+
 	return 0;
 }
 late_initcall(omap3_gpio_pads_init);
 #endif
-

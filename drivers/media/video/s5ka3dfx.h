@@ -35,6 +35,7 @@
 
 #define OMAP3430_GPIO_CAMERA_EN           152
 #define OMAP3430_GPIO_CAMERA_EN2          186
+#define OMAP3430_GPIO_CAMERA_EN3          177
 
 #define OMAP3430_GPIO_CAMERA_RST          98
 #define OMAP3430_GPIO_CAMERA_STBY         153

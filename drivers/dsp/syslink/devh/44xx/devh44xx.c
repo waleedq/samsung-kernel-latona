@@ -99,9 +99,10 @@ static void devh_notification_handler(u16 proc_id, u16 line_id, u32 event_id,
 	pr_warning("Sys Error occured in Ducati for proc_id = %d\n",
 		proc_id);
 
+#ifdef CONFIG_SYSLINK_RECOVERY
 	/* schedule the recovery */
 	ipc_recover_schedule();
-
+#endif /* ifdef CONFIG_SYSLINK_RECOVERY */
 	devh_notify_event((struct omap_devh *)arg, DEV_SYS_ERROR);
 }
 
@@ -110,7 +111,6 @@ static int devh44xx_notifier_call(struct notifier_block *nb,
 					struct omap_devh_platform_data *pdata)
 {
 	int err = 0;
-	pid_t my_pid = current->tgid;
 	struct omap_devh_runtime_info *pinfo = NULL;
 	struct omap_devh_platform_data *pdata2 = NULL;
 
@@ -124,7 +124,7 @@ static int devh44xx_notifier_call(struct notifier_block *nb,
 		if (err)
 			goto exit;
 		err = ipu_pm_notifications(APP_M3, PM_PID_DEATH,
-								(void *)my_pid);
+								(void *)v);
 		if (err) {
 			pinfo->brd_state = DEVH_BRDST_ERROR;
 			if (!strcmp(pdata->name, "SysM3")) {
@@ -240,9 +240,10 @@ static int devh44xx_wdt_ipc_notifier_call(struct notifier_block *nb,
 
 	pr_warning("Ducati Watch Dog fired\n");
 
+#ifdef CONFIG_SYSLINK_RECOVERY
 	/* schedule the recovery */
 	ipc_recover_schedule();
-
+#endif /* ifdef CONFIG_SYSLINK_RECOVERY */
 	while (i--) {
 		obj = devh_get_obj(i);
 		devh_notify_event(obj, DEV_WATCHDOG_ERROR);

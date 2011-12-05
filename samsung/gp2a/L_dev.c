@@ -712,16 +712,20 @@ static void L_dev_work_func (struct work_struct *unused)
                             break;
                     }
             }
-         
+
+	     L_dev.last_lux_val = lux;
+		 
             if(L_dev.testmode == 1)
             {
                 input_report_abs(L_dev.inputdevice, ABS_MISC, lux);
                 input_sync(L_dev.inputdevice);
+		  //L_dev.last_lux_val = lux;
             }
             else if(L_dev.testmode == 2)
             {
                 input_report_abs(L_dev.inputdevice, ABS_MISC, lux+200);
                 input_sync(L_dev.inputdevice);
+		 //L_dev.last_lux_val = lux;		
             }
             else
             {
@@ -742,8 +746,9 @@ static void L_dev_work_func (struct work_struct *unused)
                 {
                     input_report_abs(L_dev.inputdevice, ABS_MISC, lux);
                     input_sync(L_dev.inputdevice);
-                    L_dev.last_lux_val = lux;
+                    //L_dev.last_lux_val = lux;
                     L_dev.last_brightness_step = step;
+		     printk(KERN_DEBUG "LSENSOR: %s: adc_val=%d lux = %d \n", __func__, adc_val, lux);			
                 }
             }
         }
@@ -779,7 +784,7 @@ static DEVICE_ATTR(data, S_IRUGO, L_data_show, NULL);
 static DEVICE_ATTR(status, S_IRUGO, L_status_show, NULL);
 static DEVICE_ATTR(adc, S_IRUGO, L_adc_show, NULL);
 static DEVICE_ATTR(lux, S_IRUGO, L_lux_show, NULL);
-static DEVICE_ATTR(testmode, 0666, L_testmode_show, L_testmode_store);
+static DEVICE_ATTR(testmode, 0664, L_testmode_show, L_testmode_store);
 
 static struct attribute *light_attributes[] = {
     &dev_attr_adc.attr,

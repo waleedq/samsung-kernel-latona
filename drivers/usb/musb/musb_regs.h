@@ -261,6 +261,7 @@
 #define MUSB_ULPI_REG_ADDR	0x75	/* 8 bit */
 #define MUSB_ULPI_REG_CONTROL	0x76	/* 8 bit */
 #define MUSB_ULPI_RAW_DATA	0x77	/* 8 bit */
+#define MUSB_SOFT_RST                   0x7f    /* 8 bit */
 
 #define MUSB_EPINFO		0x78	/* 8 bit */
 #define MUSB_RAMINFO		0x79	/* 8 bit */

@@ -44,6 +44,12 @@
 
 #define SAMSUNG_CUSTOMISATION
 
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )
+#define ENABLE_LINEOUT
+#define SPK_LINE_OUT_SEL OMAP_GPIO_SPK_LINE_OUT
+
+#endif
+
 #ifdef SAMSUNG_CUSTOMISATION
 #ifdef CONFIG_SND_SOC_MAX97000
 #include "./max97000.h"
@@ -267,6 +273,9 @@ int twl4030_rec_8k_enable = 0;
 int twl4030_fm_radio_mute_enable = 0;
 int twl4030_vr_mode = false;
 int is_read_gain = false;
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )
+int voip_main_mode = VOIP_MAIN_OFF;
+#endif
 
 static const char *audio_path[] = 		{"Playback Path", "Voice Call Path", "Memo Path", "VT Call Path", "VOIP Call Path",  "FM Radio Path",
 													"Idle Mode","Mic Mute", "Loopback Path", "VR Mode"};
@@ -805,6 +814,68 @@ twl4030_codec_setting Loopback_rcv[]={
   {0x21, 0x34}   //TWL4030_REG_EAR_CTL
 };
 #endif
+
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )
+twl4030_codec_setting Loopback_spk[]={
+	{0x01, 0x93},  //TWL4030_REG_CODEC_MODE    
+	{0x02, 0xf5},  //TWL4030_REG_OPTION
+	{0x09, 0x00},  //TWL4030_REG_DIGMIXING
+	{0x0e, 0x01},  //TWL4030_REG_AUDIO_IF    
+	{0x12, 0xF1},  //TWL4030_REG_ARXR2PGA       
+	{0x13, 0xF1},  //TWL4030_REG_ARXL2PGA
+	{0x17, 0x00},  //TWL4030_REG_AVDAC_CTL
+	{0x3e, 0x20},  //KHoAudioMISC_SET_1
+	{0x1c, 0x35},  //TWL4030_REG_ARXR2_APGA_CTL 4dB
+	{0x1b, 0x35},  //TWL4030_REG_ARXL2_APGA_CTL 4dB
+	{0x44, 0x25},  //TWL4030_REG_ARXL2_APGA_CTL 4dB  --->>>
+	{0x22, 0x00},  //TWL4030_REG_HS_SEL
+	{0x23, 0x00},  //TWL4030_REG_HS_GAIN_SET       
+	{0x24, 0x00},  //TWL4030_REG_HS_POPN_SET     
+	{0x24, 0x00},  //TWL4030_REG_HS_POPN_SET
+	{0x3a, 0x16},  //TWL4030_REG_APLL_CTL
+	{0x3f, 0x00},  //TWL4030_REG_PCMBTMUX    
+	{0x25, 0x11},  //TWL4030_REG_PREDL_CTL
+	{0x26, 0x11},  //TWL4030_REG_PREDR_CTL	
+	{0x21, 0x00},  //TWL4030_REG_EAR_CTL  
+	{0x1e, 0x00},  //TWL4030_REG_BT_IF
+	{0x48, 0x00},  //TWL4030_REG_ANAMIC_GAIN  --->>>
+	{0x04, 0x04},  //TWL4030_REG_MICBIAS_CTL 
+	{0x05, 0x12},  //TWL4030_REG_ANAMICL
+	{0x06, 0x00},  //TWL4030_REG_ANAMICR
+	{0x07, 0x00},  //TWL4030_REG_AVADC_CTL	
+	{0x08, 0x00},  //TWL4030_REG_ADCMICSEL  
+};
+
+twl4030_codec_setting Loopback_headset[]={
+	{0x01, 0x93},  //TWL4030_REG_CODEC_MODE    
+	{0x02, 0xf5},  //TWL4030_REG_OPTION
+	{0x09, 0x00},  //TWL4030_REG_DIGMIXING
+	{0x0e, 0x01},  //TWL4030_REG_AUDIO_IF    
+	{0x12, 0x3f},  //TWL4030_REG_ARXR2PGA       
+	{0x13, 0x3f},  //TWL4030_REG_ARXL2PGA
+	{0x17, 0x00},  //TWL4030_REG_AVDAC_CTL
+	{0x3e, 0x20},  //KHoAudioMISC_SET_1
+	{0x1c, 0x53},  //TWL4030_REG_ARXR2_APGA_CTL 4dB
+	{0x1b, 0x53},  //TWL4030_REG_ARXL2_APGA_CTL 4dB
+	{0x44, 0x0d},  //TWL4030_REG_ARXL2_APGA_CTL 4dB  --->>>
+	{0x22, 0x09},  //TWL4030_REG_HS_SEL
+	{0x23, 0x05},  //TWL4030_REG_HS_GAIN_SET       
+	{0x24, 0x41},  //TWL4030_REG_HS_POPN_SET     
+	{0x24, 0x42},  //TWL4030_REG_HS_POPN_SET
+	{0x3a, 0x16},  //TWL4030_REG_APLL_CTL
+	{0x3f, 0x00},  //TWL4030_REG_PCMBTMUX    
+	{0x25, 0x00},  //TWL4030_REG_PREDL_CTL
+	{0x26, 0x00},  //TWL4030_REG_PREDR_CTL	
+	{0x21, 0x00},  //TWL4030_REG_EAR_CTL  
+	{0x1e, 0x00},  //TWL4030_REG_BT_IF
+	{0x48, 0x02},  //TWL4030_REG_ANAMIC_GAIN  --->>>
+	{0x04, 0x04},  //TWL4030_REG_MICBIAS_CTL 
+	{0x05, 0x12},  //TWL4030_REG_ANAMICL
+	{0x06, 0x00},  //TWL4030_REG_ANAMICR
+	{0x07, 0x00},  //TWL4030_REG_AVADC_CTL	
+	{0x08, 0x00},  //TWL4030_REG_ADCMICSEL   	
+};
+#else
 twl4030_codec_setting Loopback_spk[]={
   {0x01, 0x92},  //TWL4030_REG_CODEC_MODE
   {0x3a, 0x16},  //TWL4030_REG_APLL_CTL
@@ -860,6 +931,7 @@ twl4030_codec_setting Loopback_headset[]={
   {0x07, 0x0a},  //TWL4030_REG_AVADC_CTL
   {0x08, 0x00},  //TWL4030_REG_ADCMICSEL
 };
+#endif
 #endif //SAMSUNG_CUSTOMISATION
 
 /* codec private data */
@@ -890,6 +962,34 @@ struct twl4030_priv {
 	/* Delay needed after enabling the digimic interface */
 	unsigned int digimic_delay;
 };
+  
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )
+static void twl4030_main_mic_bias_control(int onoff)
+{
+#ifdef USE_GPIO_MAIN_MIC_BIAS
+	if(onoff) {		
+		gpio_set_value(MAIN_MIC_BIAS_GPIO, 1);
+		printk("[TWL4030] MAIN MIC BIAS ON !!\n");
+	} else {
+		gpio_set_value(MAIN_MIC_BIAS_GPIO, 0);
+		printk("[TWL4030] MAIN MIC BIAS OFF !!\n");
+	}
+#endif
+}
+
+void twl4030_spk_line_out_sel(int mode)
+{
+#ifdef ENABLE_LINEOUT
+	if(mode) {		
+		gpio_set_value(SPK_LINE_OUT_SEL, 1);		
+		printk("[TWL4030] SPK LINEOUT SEL = SPK(ON)\n");
+	} else {
+		gpio_set_value(SPK_LINE_OUT_SEL, 0);
+		printk("[TWL4030] SPK LINEOUT SEL = LINE OUT(OFF)\n");
+	}
+#endif
+}
+#endif
 int twl4030_get_voicecall_state(void)
 {
 	if(twl4030_remap== 1)
@@ -1160,7 +1260,16 @@ static int twl4030_reset_all_output(struct snd_soc_codec *codec)
 static void twl4030_set_pcm_sel(int mode)
 {
 	printk("twl4030_set_pcm_sel mode %d\n",  mode);
-
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )
+	if(mode == BT_SEL_PCM_MODE){
+			gpio_set_value(PCM_SEL,0);
+	}else if(mode == BT_SEL_I2S_MODE){
+			gpio_set_value(PCM_SEL,1);
+	}else if(mode == BT_SEL_LOW_MODE){
+			gpio_set_value(PCM_SEL,0);
+	}else
+		printk("ERR!! twl4030_set_pcm_sel() %d\n", mode);
+#else		
 	if(mode == BT_SEL_PCM_MODE){
 			gpio_set_value(PCM_SEL,1);
 	}else if(mode == BT_SEL_I2S_MODE){
@@ -1169,6 +1278,7 @@ static void twl4030_set_pcm_sel(int mode)
 		gpio_set_value(PCM_SEL,0);
 	}else
 		printk("ERR!! twl4030_set_pcm_sel() %d\n", mode);
+#endif		
 }
 
 #endif // SAMSUNG_CUSTOMISATION
@@ -1191,6 +1301,10 @@ static void twl4030_codec_enable(struct snd_soc_codec *codec, int enable)
 #if defined(CONFIG_SND_SOC_MAX97000)
 		//if(!twl4030_codec_suspended)
 		max97000_power_down_mode(); //for powerdown noise
+#endif
+#if defined(CONFIG_SND_SOC_MAX9877)
+		//if(!twl4030_codec_suspended)
+		max9877_power_down_mode(); //for powerdown noise
 #endif
 		for(i=0;i<ARRAY_SIZE(volume_off);i++){
 			twl4030_write(codec, volume_off[i].reg,volume_off[i].value);                        
@@ -2206,6 +2320,9 @@ static int mic_enable(struct snd_soc_codec *codec, int mode, int enable)
 		switch(mode)
 		{
 			case MAIN_MIC:
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )			
+				twl4030_main_mic_bias_control(true);
+#endif				
 				twl4030_write(codec, 0x04, 0x03);  //TWL4030_REG_MICBIAS_CTL
 				break;
 
@@ -2225,6 +2342,9 @@ static int mic_enable(struct snd_soc_codec *codec, int mode, int enable)
 			twl4030_write(codec, 0x05, 0x00);
 
 			default:
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )			
+			twl4030_main_mic_bias_control(false);
+#endif			
 			twl4030_write(codec, 0x04, 0x00);  //TWL4030_REG_MICBIAS_CTL
 			break;
 		}
@@ -2323,10 +2443,19 @@ static int twl4030_set_playback_path(struct snd_kcontrol *kcontrol, struct snd_c
 		twl4030_modify(codec, 0x1c, 0x33, ~ARX_APGA_GAIN_MASK); //TWL4030_REG_ARXR2_APGA_CTL
 		twl4030_write(codec, 0x21, 0x00); //TWL4030_REG_EAR_CTL
 		twl4030_write(codec, 0x22, 0x00); //TWL4030_REG_HS_SEL
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )	
+		twl4030_modify(codec, 0x26, 0x24, ~PREDL_CTL_GAIN_MASK); //TWL4030_REG_PREDR_CTL
+		twl4030_modify(codec, 0x25, 0x24, ~PREDL_CTL_GAIN_MASK);  //TWL4030_REG_PREDL_CTL	    
+#else				
 		twl4030_modify(codec, 0x26, 0x28, ~PREDL_CTL_GAIN_MASK); //TWL4030_REG_PREDR_CTL
 		twl4030_modify(codec, 0x25, 0x28, ~PREDL_CTL_GAIN_MASK);  //TWL4030_REG_PREDL_CTL
-
+#endif
 		twl4030_write(codec, 0x43, 0x00);
+
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )
+		if(ucontrol->value.integer.value[0] == EXTRA_SPEAKER)
+			twl4030_spk_line_out_sel(0);
+#endif			
 		#endif
 		break;
 
@@ -2367,6 +2496,30 @@ static int twl4030_set_playback_path(struct snd_kcontrol *kcontrol, struct snd_c
 		    twl4030_write(codec, playback_spk_hp[i].reg,playback_spk_hp[i].value);
 		}
 		#else
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )
+		    //{0x0e, 0x01);, //TWL4030_REG_AUDIO_IF
+		    //{0x3a, 0x16);, //TWL4030_REG_APLL_CTL
+		    twl4030_write(codec, 0x17, 0x0f); //TWL4030_REG_AVDAC_CTL enable DACL1,R1, DACL2, R2
+	    	twl4030_write(codec, 0x43, 0x0a); //TWL4030_REG_AVDAC_CTL  
+	    	twl4030_write(codec, 0x01, 0x93); //TWL4030_REG_CODEC_MODE
+	    	//twl4030_write(codec, 0x13, 0x3d); //TWL4030_REG_ARXL2PGA
+	    	//twl4030_write(codec, 0x12, 0x3d); //TWL4030_REG_ARXR2PGA 
+			twl4030_modify(codec, 0x19, 0x33, ~ARX_APGA_GAIN_MASK); //TWL4030_REG_ARXL1_APGA_CTL 
+	    	twl4030_modify(codec, 0x1a, 0x33, ~ARX_APGA_GAIN_MASK); //TWL4030_REG_ARXR1_APGA_CTL 
+	    	twl4030_write(codec, 0x22, 0x12); //TWL4030_REG_HS_SEL   select AUDIO L1, R1
+	    	
+	    	twl4030_modify(codec, 0x1b, 0x33, ~ARX_APGA_GAIN_MASK); //TWL4030_REG_ARXL2_APGA_CTL 
+	    	twl4030_modify(codec, 0x1c, 0x33, ~ARX_APGA_GAIN_MASK); //TWL4030_REG_ARXR2_APGA_CTL 	    	
+	    	twl4030_write(codec, 0x21, 0x00); //TWL4030_REG_EAR_CTL  
+
+	    	//twl4030_write(codec, 0x23, 0x0f); //TWL4030_REG_HS_GAIN_SET
+	    	twl4030_write(codec, 0x24, 0x41); //TWL4030_REG_HS_POPN_SET       
+	    	twl4030_write(codec, 0x24, 0x42); //TWL4030_REG_HS_POPN_SET   
+	    	twl4030_modify(codec, 0x25, 0x24, ~PREDL_CTL_GAIN_MASK); //TWL4030_REG_PREDL_CTL   
+	    	twl4030_modify(codec, 0x26, 0x24, ~PREDL_CTL_GAIN_MASK); //TWL4030_REG_PREDR_CTL   
+	    
+	    	//twl4030_write(codec, 0x43, 0x00);
+#else					
 		    //{0x0e, 0x01);, //TWL4030_REG_AUDIO_IF
 		    //{0x3a, 0x16);, //TWL4030_REG_APLL_CTL
 	    	twl4030_write(codec, 0x01, 0x93); //TWL4030_REG_CODEC_MODE
@@ -2384,6 +2537,7 @@ static int twl4030_set_playback_path(struct snd_kcontrol *kcontrol, struct snd_c
 	    	twl4030_modify(codec, 0x26, 0x28, ~PREDL_CTL_GAIN_MASK); //TWL4030_REG_PREDR_CTL
 
 	    	twl4030_write(codec, 0x43, 0x00);
+#endif			
 		#endif
 		break;
 
@@ -2415,6 +2569,7 @@ static int twl4030_set_voicecall_path(struct snd_kcontrol *kcontrol, struct snd_
 	//W/A for callmute : it should be removed after fix -taesung kim
 	wake_lock( &T2_wakelock);
 	twl4030_playback_device = 0;
+    twl4030_fm_device = 0;
 
 	twl4030_set_pcm_sel(BT_SEL_LOW_MODE);
 
@@ -2927,6 +3082,13 @@ static int twl4030_set_loopback_path(struct snd_kcontrol *kcontrol, struct snd_c
 
 	switch(ucontrol->value.integer.value[0])
 	{
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )	
+		case OFF:
+			mic_enable(codec, MAIN_MIC, 0);
+			mic_enable(codec, HP_MIC, 0);
+			max9877_set_force_out_mode(LOOP_BACK,ucontrol->value.integer.value[0]);
+			break;
+#endif			
 		case RCV:
 		mic_enable(codec, MAIN_MIC, 1);
 		for(i=0;i<ARRAY_SIZE(Loopback_rcv);i++)
@@ -2942,7 +3104,13 @@ static int twl4030_set_loopback_path(struct snd_kcontrol *kcontrol, struct snd_c
 		{
 			  twl4030_write(codec, Loopback_spk[i].reg, Loopback_spk[i].value);
 		}
-
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )
+		mic_enable(codec, HP_MIC, 0);				
+		mic_enable(codec, MAIN_MIC, 1);
+		twl4030_write(codec, 0x05, 0x11);
+		max9877_set_force_out_mode(LOOP_BACK,SPK);
+		twl4030_spk_line_out_sel(1);
+#endif		
 		break;
 
 		case HP3P:
@@ -2952,6 +3120,9 @@ static int twl4030_set_loopback_path(struct snd_kcontrol *kcontrol, struct snd_c
 		{
 			 twl4030_write(codec, Loopback_headset[i].reg, Loopback_headset[i].value);
 		}
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )		
+		max9877_set_force_out_mode(LOOP_BACK,ucontrol->value.integer.value[0]);
+#endif		
 		break;
 
 		default:
@@ -2990,7 +3161,17 @@ static int twl4030_set_idle_mode(struct snd_kcontrol *kcontrol, struct snd_ctl_e
 		#ifdef USE_MAIN_MIC_LDO
 		gpio_set_value(MAIN_MIC_BIAS_EN, 0);
 		#endif
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )		
+#ifdef USE_GPIO_MAIN_MIC_BIAS
+		twl4030_main_mic_bias_control(false);
+#endif 
+#endif		
+
 		twl4030_set_pcm_sel(BT_SEL_LOW_MODE);
+
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )
+		twl4030_spk_line_out_sel(0);
+#endif		
 		twl4030_power_down(codec);
 	}
 
@@ -3054,6 +3235,54 @@ static int twl4030_get_mic_mute(struct snd_kcontrol *kcontrol, struct snd_ctl_el
 	return twl4030_mic_mute_enable;
 }
 
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )
+static int twl4030_get_voip_main_path(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
+{
+	printk("twl4030_get_voip_main_path = %d !!!\n", voip_main_mode);
+	return voip_main_mode;
+}
+
+static int twl4030_set_voip_main_path(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+	voip_main_mode = ucontrol->value.integer.value[0];
+	
+	printk("twl4030_set_voip_main_path = %d playback deive %d  call device %d !!!\n", voip_main_mode,twl4030_playback_device,twl4030_call_device);
+	
+	switch(voip_main_mode)
+	{
+		case VOIP_MAIN_ON:
+			//twl4030_set_voipcall_path(kcontrol, ucontrol, VOIP_CALL);
+		        if(twl4030_call_device==0){
+		    	    set_codec_gain(codec, VOIP_CALL, twl4030_playback_device);
+                            max9877_set_force_out_mode(VOIP_CALL,twl4030_playback_device);
+                            twl4030_voip_device = twl4030_playback_device;
+	
+		        }else{
+                            set_codec_gain(codec, VOIP_CALL, twl4030_call_device);
+                            max9877_set_force_out_mode(VOIP_CALL,twl4030_call_device);
+                            twl4030_voip_device = twl4030_call_device;
+			
+		        }
+			//twl4030_playback_device = 0;
+			break;
+		case VOIP_MAIN_OFF:
+		default:
+			if(twl4030_call_device==0){
+			    set_codec_gain(codec, PLAY_BACK, twl4030_playback_device);
+                            max9877_set_force_out_mode(PLAY_BACK,twl4030_playback_device);
+			}else{
+                            set_codec_gain(codec, PLAY_BACK, twl4030_call_device);
+                            max9877_set_force_out_mode(PLAY_BACK,twl4030_call_device);
+			}
+			//twl4030_set_idle_mode(kcontrol,ucontrol,IDLE_MODE);
+			//max9877_set_force_out_mode(VOIP_CALL,OFF);
+			break;
+	}
+	return 0;	
+}
+#endif
+
 static int twl4030_get_path(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
 	int i =0;
@@ -3114,9 +3343,7 @@ static int twl4030_set_path(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_v
 	if(!is_read_gain){
 		set_codec_gain_init(codec);
 		is_read_gain = true;
-#if ( defined( CONFIG_MACH_SAMSUNG_LATONA ) ) // jypark72, to avoid build error
 		set_amp_gain_init();
-#endif
 	}
 	#endif
 
@@ -3126,6 +3353,9 @@ static int twl4030_set_path(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_v
 	cancel_delayed_work_sync(&twl4030_register_dump_work_queue);
 	#endif
 
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )
+	twl4030_spk_line_out_sel(1);
+#endif	
 	twl4030_write(codec, 0x0e, 0x01);
 	while(audio_path[i] !=NULL)
 	{
@@ -3142,8 +3372,18 @@ static int twl4030_set_path(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_v
 					#ifndef VOICECALL_TUNE
 					twl4030_unset_remap();
 					state =twl4030_set_playback_path(kcontrol, ucontrol,i);
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )
+					if(state != TWL4030_SAME_DEVICE) {
+						if(voip_main_mode == VOIP_MAIN_ON) {
+							set_codec_gain(codec, VOIP_CALL, ucontrol->value.integer.value[0]);
+							max9877_set_force_out_mode(VOIP_CALL,ucontrol->value.integer.value[0]);
+						} else 
+							set_codec_gain(codec, i, ucontrol->value.integer.value[0]);
+					}
+#else									
 					if(state != TWL4030_SAME_DEVICE)
 						set_codec_gain(codec, i, ucontrol->value.integer.value[0]);
+#endif
 					//schedule_delayed_work(&twl4030_register_dump_work_queue, 500);
 					#endif
 					return 0;
@@ -3166,6 +3406,12 @@ static int twl4030_set_path(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_v
 				case VOICE_MEMO:
 					twl4030_set_voicememo_path(kcontrol, ucontrol, i);
 					#ifndef REC_TUNE
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )					
+					if(voip_main_mode == VOIP_MAIN_ON) {
+						printk("[twl4030] current voip mode, don't need voicememo gain setting \n");
+						return 0;
+					}
+#endif					
 					set_codec_gain(codec, i, ucontrol->value.integer.value[0]);
 					#endif
 					return 0;
@@ -3528,6 +3774,12 @@ static const struct snd_kcontrol_new twl4030_snd_controls[] = {
 
 	SOC_ENUM_EXT("FM Radio Mute Enable", path_control_enum[6],
 					twl4030_get_fm_radio_mute_enable, twl4030_set_fm_radio_mute_enable),
+
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )					
+	/* voip call setting */
+	SOC_ENUM_EXT("Codec Status", path_control_enum[8],
+			twl4030_get_voip_main_path,twl4030_set_voip_main_path),						
+#endif			
 #endif // SAMSUNG_CUSTOMISATION
 };
 
@@ -4566,6 +4818,9 @@ static int twl4030_soc_suspend(struct snd_soc_codec *codec, pm_message_t state)
 	        twl4030_voip_device = 0;	// hskwon-ss-cl31, added for FMC(VoIP) call path
 	        twl4030_codec_suspended = true;
 		twl4030_fm_device = 0;
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )		
+		twl4030_spk_line_out_sel(0);
+#endif		
 #endif		
 		twl4030_set_bias_level(codec, SND_SOC_BIAS_OFF);
 
@@ -4619,6 +4874,20 @@ static int twl4030_soc_probe(struct snd_soc_codec *codec)
 	snd_soc_add_controls(codec, twl4030_snd_controls,
 				ARRAY_SIZE(twl4030_snd_controls));
 	twl4030_add_widgets(codec);
+
+#if ( defined( CONFIG_MACH_SAMSUNG_P1WIFI ) )		
+#ifdef ENABLE_LINEOUT
+	if (gpio_request(SPK_LINE_OUT_SEL , "SPK_LINE_OUT_SEL") == 0)
+			gpio_direction_output(SPK_LINE_OUT_SEL , 1);
+		else
+			printk(KERN_ERR "[twl4030] fail to gpio request SPK_LINE_OUT_SEL\n");	
+#endif
+	if (gpio_request(MAIN_MIC_BIAS_GPIO , "MAIN_MIC_BIAS") == 0)
+			gpio_direction_output(MAIN_MIC_BIAS_GPIO , 1);
+		else
+			printk("[twl4030] fail to gpio request MAIN_MIC_BIAS\n");	
+	twl4030_vintana1_power_enable(1);//twl power up
+#endif	
 	return 0;
 }
 

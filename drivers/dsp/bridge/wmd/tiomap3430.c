@@ -219,7 +219,7 @@ static struct bridge_drv_interface drv_interface_fxns = {
 };
 
 static struct notifier_block dsp_mbox_notifier = {
-     .notifier_call = io_mbox_msg,
+	.notifier_call = io_mbox_msg,
 };
 
 static inline void tlb_flush_all(const void __iomem *base)
@@ -435,9 +435,8 @@ static int bridge_brd_start(struct wmd_dev_context *hDevContext,
 		/* Assert RST1 i.e only the RST only for DSP megacell */
 		if (DSP_SUCCEEDED(status)) {
 			(*pdata->dsp_prm_rmw_bits)(OMAP3430_RST1_IVA2_MASK,
-						   OMAP3430_RST1_IVA2_MASK,
-						   OMAP3430_IVA2_MOD,
-						   OMAP2_RM_RSTCTRL);
+					OMAP3430_RST1_IVA2_MASK, OMAP3430_IVA2_MOD,
+					OMAP2_RM_RSTCTRL);
 			/* Mask address with 1K for compatibility */
 			__raw_writel(dwDSPAddr & OMAP3_IVA2_BOOTADDR_MASK,
 					OMAP343X_CTRL_REGADDR(
@@ -454,7 +453,9 @@ static int bridge_brd_start(struct wmd_dev_context *hDevContext,
 		/* Reset and Unreset the RST2, so that BOOTADDR is copied to
 		 * IVA2 SYSC register */
 		(*pdata->dsp_prm_rmw_bits)(OMAP3430_RST2_IVA2_MASK,
-			OMAP3430_RST1_IVA2_MASK, OMAP3430_IVA2_MOD, OMAP2_RM_RSTCTRL);
+					   OMAP3430_RST1_IVA2_MASK,
+					   OMAP3430_IVA2_MOD,
+					   OMAP2_RM_RSTCTRL);
 		udelay(100);
 		(*pdata->dsp_prm_rmw_bits)(OMAP3430_RST2_IVA2_MASK, 0,
 					OMAP3430_IVA2_MOD, OMAP2_RM_RSTCTRL);
@@ -622,7 +623,6 @@ static int bridge_brd_start(struct wmd_dev_context *hDevContext,
 		 *Enable Mailbox events and also drain any pending
 		 * stale messages.
 		 */
-		//hDevContext->mbox = omap_mbox_get("dsp", NULL);
 		dev_context->mbox = omap_mbox_get("dsp", &dsp_mbox_notifier);
 		if (IS_ERR(hDevContext->mbox)) {
 			hDevContext->mbox = NULL;
@@ -634,12 +634,6 @@ static int bridge_brd_start(struct wmd_dev_context *hDevContext,
 	}
 
 	if (DSP_SUCCEEDED(status)) {
-
-	//	hDevContext->mbox->rxq->callback = (int (*)(void *))io_mbox_msg;
-		/*hDevContext->mbox->txq->callback =
-					(int (*)(void *))send_mbox_callback;
-		*/
-
 /*PM_IVA2GRPSEL_PER = 0xC0; */
 		temp = (u32) *((reg_uword32 *)
 				((u32) (resources->dw_per_pm_base) + 0xA8));
@@ -677,7 +671,7 @@ static int bridge_brd_start(struct wmd_dev_context *hDevContext,
 		dev_dbg(bridge, "DSP c_int00 Address =  0x%x\n", dwDSPAddr);
 		if (dsp_debug)
 			while (*((volatile u16 *)dw_sync_addr))
-			  ;
+				;
 
 		/* Wait for DSP to clear word in shared memory */
 		/* Read the Location */
@@ -775,7 +769,6 @@ static int bridge_brd_stop(struct wmd_dev_context *hDevContext)
 	/* Disable the mail box interrupts */
 	if (hDevContext->mbox) {
 		omap_mbox_disable_irq(hDevContext->mbox, IRQ_RX);
-	//	omap_mbox_put(hDevContext->mbox, NULL);
 		omap_mbox_put(dev_context->mbox, &dsp_mbox_notifier);
 		hDevContext->mbox = NULL;
 	}
@@ -936,12 +929,7 @@ static int bridge_dev_create(OUT struct wmd_dev_context **ppDevContext,
 
 	pt_attrs = kzalloc(sizeof(struct pg_table_attrs), GFP_KERNEL);
 	if (pt_attrs != NULL) {
-		/* Assuming that we use only DSP's memory map
-		 * until 0x4000:0000 , we would need only 1024
-		 * L1 enties i.e L1 size = 4K */
-		//pt_attrs->l1_size = 0x1000;
 		pt_attrs->l1_size = SZ_16K; /* 4096 entries of 32 bits */
-		
 		align_size = pt_attrs->l1_size;
 		/* Align sizes are expected to be power of 2 */
 		/* we like to get aligned on L1 table size */
@@ -1825,7 +1813,7 @@ static int pte_set(struct pg_table_attrs *pt, u32 pa, u32 va,
 			/* Find a free L2 PT. */
 			for (i = 0; (i < pt->l2_num_pages) &&
 			     (pt->pg_info[i].num_entries != 0); i++)
-			  ;;
+				;;
 			if (i < pt->l2_num_pages) {
 				l2_page_num = i;
 				l2_base_pa = pt->l2_base_pa + (l2_page_num *
@@ -1965,7 +1953,7 @@ void configure_dsp_mmu(struct wmd_dev_context *dev_context, u32 dataBasePhys,
 		       enum hw_mmu_mixed_size_t mixed_size)
 {
 	struct hw_mmu_map_attrs_t map_attrs = {
-	  endianism, elem_size, mixed_size };
+		endianism, elem_size, mixed_size };
 
 	DBC_REQUIRE(sizeInBytes > 0);
 	dev_dbg(bridge, "%s: entry %x pa %x, va %x, bytes %x endianism %x, "

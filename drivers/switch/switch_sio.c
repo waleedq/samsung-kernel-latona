@@ -40,6 +40,10 @@ extern void mcirousb_usbpath_change(int usb_path);
 
 extern int get_real_usbic_state(void);
 
+#ifdef CONFIG_KEYBOARD_P1
+extern bool keyboard_enable;
+#endif
+
 extern struct class *sec_class;
 extern void (*sec_set_param_value)(int idx, void *value);
 extern void (*sec_get_param_value)(int idx, void *value);
@@ -145,7 +149,14 @@ static void sio_switch_config(USB_UART_SW_MODE_TYPE sio_mode)
 			gpio_set_value(OMAP_GPIO_UART_SEL, GPIO_LEVEL_HIGH);
 			break;
 		case CP_UART_MODE:
+#ifdef CONFIG_KEYBOARD_P1
+			if(!keyboard_enable)
+			{
 			gpio_set_value(OMAP_GPIO_UART_SEL, GPIO_LEVEL_LOW);
+			}
+#else
+			gpio_set_value(OMAP_GPIO_UART_SEL, GPIO_LEVEL_LOW);
+#endif
 			break;
 		default:
 			printk("sio_switch_config error");
@@ -328,9 +339,9 @@ static ssize_t usb_state_store(
 }
 
 /*sysfs for usb cable's state.*/
-static DEVICE_ATTR(usb_state, S_IRUGO |S_IWUGO | S_IRUSR | S_IWUSR, usb_state_show, usb_state_store);
-static DEVICE_ATTR(usb_sel, S_IRUGO | S_IWUGO | S_IRUSR | S_IWUSR, usb_sel_show, usb_sel_store);
-static DEVICE_ATTR(uart_sel, S_IRUGO | S_IWUGO | S_IRUSR | S_IWUSR, uart_switch_show, uart_switch_store);
+static DEVICE_ATTR(usb_state, 0664, usb_state_show, usb_state_store);
+static DEVICE_ATTR(usb_sel, 0664, usb_sel_show, usb_sel_store);
+static DEVICE_ATTR(uart_sel, 0664, uart_switch_show, uart_switch_store);
 
 static struct attribute *switch_sio_attributes[] = {
 	&dev_attr_usb_state.attr,

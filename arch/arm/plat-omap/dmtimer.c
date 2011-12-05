@@ -208,6 +208,43 @@ static struct omap_timer_regs timer_context[NR_DMTIMERS_MAX];
 static LIST_HEAD(omap_timer_list);
 static DEFINE_SPINLOCK(dm_timer_lock);
 
+
+
+//TI patch start - RANDOM CRASH
+#define BUS_ERROR_TEST
+
+static inline void CheckBusError(u32 Num)
+{
+	if( omap_readl(0x48340028) & 0x0100 ) //INBAND_ERROR_PRIMARY
+	{
+		printk("[BUS] L4_TA_WKUP ERROR -%d\n", Num);
+	}
+
+	return;
+}
+static inline void ClockCycleWait(void )
+{
+	int i = 0;
+
+	for(i = 0; i < 3; i++)
+	{
+		nop();
+		nop();
+		nop();
+		nop();
+		nop();
+		nop();
+		nop();
+		nop();
+		nop();
+		nop();
+		omap_readl(0x48310000);		//GPIO 1 - GPIO_REVISION
+	}
+
+}
+// TI patch end - RANDOM CRASH
+
+
 /**
  * omap_dm_timer_read_reg - read timer registers in posted and non-posted mode
  * @timer:      timer pointer over which read operation to perform
@@ -227,6 +264,18 @@ static inline u32 omap_dm_timer_read_reg(struct omap_dm_timer *timer, u32 reg)
 	else if (reg >= OMAP_TIMER_STAT_REG)
 		reg += pdata->intr_offset;
 
+//TI patch start - RANDOM CRASH
+#ifdef BUS_ERROR_TEST
+		CheckBusError(1);
+	
+		if(NULL == timer->io_base)
+			printk("[BUS] ERROR!! Read IO Base is NULL\n"); //After testing block it!!!
+#endif
+		
+		ClockCycleWait();
+//TI patch end - RANDOM CRASH
+
+#if 0
 	if (timer->posted) {
 		omap_test_timeout(!(readl(timer->io_base +
 			((OMAP_TIMER_WRITE_PEND_REG +
@@ -234,6 +283,24 @@ static inline u32 omap_dm_timer_read_reg(struct omap_dm_timer *timer, u32 reg)
 			MAX_WRITE_PEND_WAIT, i);
 		WARN_ON(i == MAX_WRITE_PEND_WAIT);
 	}
+#else
+	if (timer->posted)
+		while (readl(timer->io_base + \
+				((OMAP_TIMER_WRITE_PEND_REG + pdata->func_offset) & 0xff))
+				& (reg >> WPSHIFT))
+		{
+			//TI patch start
+			ClockCycleWait();
+			//TI patch end
+		}
+#endif
+
+//TI patch start - RANDOM CRASH
+#ifdef BUS_ERROR_TEST
+		CheckBusError(2);
+#endif
+		ClockCycleWait();
+//TI patch end - RANDOM CRASH
 
 	return readl(timer->io_base + (reg & 0xff));
 }
@@ -259,6 +326,20 @@ static void omap_dm_timer_write_reg(struct omap_dm_timer *timer, u32 reg,
 	else if (reg >= OMAP_TIMER_STAT_REG)
 		reg += pdata->intr_offset;
 
+
+	
+//TI patch start - RANDOM CRASH
+#ifdef BUS_ERROR_TEST
+		CheckBusError(3);
+	
+		if(NULL == timer->io_base)
+			printk("[BUS] ERROR!! Read IO Base is NULL\n"); //After testing block it!!!
+#endif
+	
+		ClockCycleWait();
+//TI patch end - RANDOM CRASH
+
+#if 0
 	if (timer->posted) {
 		omap_test_timeout(!(readl(timer->io_base +
 			((OMAP_TIMER_WRITE_PEND_REG +
@@ -266,6 +347,24 @@ static void omap_dm_timer_write_reg(struct omap_dm_timer *timer, u32 reg,
 			MAX_WRITE_PEND_WAIT, i);
 		WARN_ON(i == MAX_WRITE_PEND_WAIT);
 	}
+#else
+	if (timer->posted)
+		while (readl(timer->io_base + \
+				((OMAP_TIMER_WRITE_PEND_REG + pdata->func_offset) & 0xff))
+				& (reg >> WPSHIFT))
+			{
+			//TI patch start
+				ClockCycleWait();
+			//TI patch end
+			}
+#endif
+
+//TI patch start - RANDOM CRASH
+#ifdef BUS_ERROR_TEST
+			CheckBusError(4);		
+#endif
+			ClockCycleWait();
+//TI patch end - RANDOM CRASH
 
 	writel(value, timer->io_base + (reg & 0xff));
 }
@@ -843,6 +942,17 @@ static int __devinit omap_dm_timer_probe(struct platform_device *pdev)
 	spin_unlock_irqrestore(&dm_timer_lock, flags);
 
 	dev_dbg(&pdev->dev, " bound to its driver\n");
+
+//TI patch start : disabling "timeout" 
+	printk("[BUS]L4_TA_AGENT_CONTROL_L before: 0x%x\n", omap_readl(0x48340020));
+	nop();
+	nop();
+	omap_writel( (omap_readl(0x48340020) & ~0x700) ,0x48340020);
+	nop();
+	nop();
+	printk("[BUS]L4_TA_AGENT_CONTROL_L after: 0x%x\n", omap_readl(0x48340020));
+//TI patch end
+	
 
 	return 0;
 
