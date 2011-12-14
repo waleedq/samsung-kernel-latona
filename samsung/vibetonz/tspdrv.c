@@ -97,8 +97,11 @@ static int set_vibetonz(int timeout)
 	}
 	else {
 
-		
+		//ImmVibeSPI_ForceOut_Initialize();
+		ImmVibeSPI_ForceOut_Set(0,1);
 		printk(KERN_DEBUG "[VIBETONZ] ENABLE\n");
+        gpio_direction_output(OMAP_GPIO_VIBTONE_EN, GPIO_LEVEL_LOW);
+        mdelay(1);
 		gpio_set_value(OMAP_GPIO_VIBTONE_EN, GPIO_LEVEL_HIGH);
 	}
 
